@@ -1,0 +1,4 @@
+# AWS Bedrock Documentation URLs
+# Add URLs to Bedrock documentation pages here (30-50 pages)
+# One URL per line
+
