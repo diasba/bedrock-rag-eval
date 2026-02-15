@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import logging
-
-from sentence_transformers import SentenceTransformer
+from typing import TYPE_CHECKING
 
 from app.config import EMBEDDING_MODEL
+
+if TYPE_CHECKING:
+    from sentence_transformers import SentenceTransformer
 
 logger = logging.getLogger(__name__)
 
@@ -17,6 +19,8 @@ def get_model() -> SentenceTransformer:
     """Lazy-load and cache the embedding model (singleton)."""
     global _model  # noqa: PLW0603
     if _model is None:
+        from sentence_transformers import SentenceTransformer
+
         logger.info("Loading embedding model: %s", EMBEDDING_MODEL)
         _model = SentenceTransformer(EMBEDDING_MODEL)
         logger.info("Embedding model loaded.")
