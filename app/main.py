@@ -1,4 +1,4 @@
-"""FastAPI application — MVP endpoints: /health, /ingest."""
+"""FastAPI application — MVP endpoints: /health, /ingest, /query."""
 
 from __future__ import annotations
 
@@ -6,11 +6,12 @@ import logging
 import time
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Query
 from pydantic import BaseModel
 
-from app.config import CHUNK_OVERLAP, CHUNK_SIZE, MIN_DOC_LENGTH
-from app.db.chroma import heartbeat, upsert_chunks
+from app.config import CHUNK_OVERLAP, CHUNK_SIZE, MIN_DOC_LENGTH, NO_ANSWER_MIN_SCORE, TOP_K
+from app.db.chroma import RetrievedChunk, heartbeat, query_chunks, upsert_chunks
+from app.generation.llm import generate_answer
 from app.ingest.chunker import Chunk, chunk_text
 from app.ingest.embedder import embed_texts
 from app.ingest.loader import load_folder
@@ -48,6 +49,30 @@ class IngestResponse(BaseModel):
 class HealthResponse(BaseModel):
     status: str
     chroma: str
+
+
+class QueryRequest(BaseModel):
+    question: str
+    top_k: int = TOP_K
+    include_context: bool = False
+
+
+class CitationResponse(BaseModel):
+    doc_id: str
+    chunk_id: str
+
+
+class RetrievedChunkResponse(BaseModel):
+    doc_id: str
+    chunk_id: str
+    score: float
+    text: str
+
+
+class QueryResponse(BaseModel):
+    answer: str
+    citations: list[CitationResponse]
+    retrieved: list[RetrievedChunkResponse] | None = None
 
 
 # ── Endpoints ──────────────────────────────────────────────────────────
@@ -112,3 +137,61 @@ def ingest(body: IngestRequest) -> IngestResponse:
         duration_sec=duration,
         errors=[IngestError(**e) for e in errors[:10]],
     )
+
+
+@app.post("/query", response_model=QueryResponse)
+def query(body: QueryRequest) -> QueryResponse:
+    """Answer a question using RAG with grounded citations."""
+    logger.info("Query: %s", body.question)
+
+    # 1. Embed the question ─────────────────────────────────────────────
+    query_embedding = embed_texts([body.question])[0]
+
+    # 2. Retrieve relevant chunks ──────────────────────────────────────
+    retrieved = query_chunks(query_embedding, top_k=body.top_k)
+
+    # 3. No-answer gate ─────────────────────────────────────────────────
+    if not retrieved or (retrieved and retrieved[0].score < NO_ANSWER_MIN_SCORE):
+        logger.info("No answer: insufficient context (score: %.3f)", retrieved[0].score if retrieved else 0.0)
+        return QueryResponse(
+            answer="I don't know based on the provided documents.",
+            citations=[],
+            retrieved=_format_retrieved(retrieved) if body.include_context else None,
+        )
+
+    # 4. Generate answer with LLM ──────────────────────────────────────
+    result = generate_answer(body.question, retrieved)
+
+    # 5. Citation fallback: if LLM produced an answer but omitted markers,
+    #    cite all retrieved chunks (they passed the relevance gate).
+    citations = result.citations
+    if not citations and result.answer:
+        no_answer_text = "I don't know based on the provided documents."
+        if no_answer_text not in result.answer:
+            logger.info("LLM omitted chunk markers — falling back to all retrieved chunks as citations")
+            from app.generation.llm import Citation as _Cit
+            citations = [_Cit(doc_id=c.doc_id, chunk_id=c.chunk_id) for c in retrieved]
+
+    logger.info("Generated answer with %d citations", len(citations))
+
+    return QueryResponse(
+        answer=result.answer,
+        citations=[
+            CitationResponse(doc_id=c.doc_id, chunk_id=c.chunk_id)
+            for c in citations
+        ],
+        retrieved=_format_retrieved(retrieved) if body.include_context else None,
+    )
+
+
+def _format_retrieved(chunks: list[RetrievedChunk]) -> list[RetrievedChunkResponse]:
+    """Convert retrieved chunks to response format."""
+    return [
+        RetrievedChunkResponse(
+            doc_id=c.doc_id,
+            chunk_id=c.chunk_id,
+            score=round(c.score, 4),
+            text=c.text,
+        )
+        for c in chunks
+    ]

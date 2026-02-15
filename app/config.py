@@ -28,5 +28,12 @@ EMBEDDING_MODEL: str = os.getenv(
 # ── ChromaDB ───────────────────────────────────────────────────────────
 CHROMA_COLLECTION: str = os.getenv("CHROMA_COLLECTION", "bedrock_docs")
 
-# ── LLM (reserved for later) ──────────────────────────────────────────
+# ── Query / Retrieval ─────────────────────────────────────────────────
+TOP_K: int = int(os.getenv("TOP_K", "4"))
+MAX_CHUNKS_PER_DOC: int = int(os.getenv("MAX_CHUNKS_PER_DOC", "2"))
+NO_ANSWER_MIN_SCORE: float = float(os.getenv("NO_ANSWER_MIN_SCORE", "0.3"))
+
+# ── LLM (Groq) ────────────────────────────────────────────────────────
 GROQ_API_KEY: str = os.getenv("GROQ_API_KEY", "")
+GROQ_MODEL: str = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
+GROQ_TEMPERATURE: float = float(os.getenv("GROQ_TEMPERATURE", "0.0"))
