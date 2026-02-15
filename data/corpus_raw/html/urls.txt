@@ -1,4 +1,49 @@
-# AWS Bedrock Documentation URLs
-# Add URLs to Bedrock documentation pages here (30-50 pages)
-# One URL per line
+# Core / Conceptual (8)
+https://docs.aws.amazon.com/bedrock/latest/userguide/what-is-bedrock.html
+https://docs.aws.amazon.com/bedrock/latest/userguide/getting-started.html
+https://docs.aws.amazon.com/bedrock/latest/userguide/model-access.html
+https://docs.aws.amazon.com/bedrock/latest/userguide/models-supported.html
+https://docs.aws.amazon.com/bedrock/latest/userguide/models-regions.html
+https://docs.aws.amazon.com/bedrock/latest/userguide/endpoints.html
+https://docs.aws.amazon.com/bedrock/latest/userguide/quotas.html
+https://docs.aws.amazon.com/bedrock/latest/userguide/service-tiers-inference.html
 
+# Knowledge Bases / RAG (15)
+https://docs.aws.amazon.com/bedrock/latest/userguide/knowledge-base.html
+https://docs.aws.amazon.com/bedrock/latest/userguide/kb-how-it-works.html
+https://docs.aws.amazon.com/bedrock/latest/userguide/kb-how-data.html
+https://docs.aws.amazon.com/bedrock/latest/userguide/knowledge-base-ds.html
+https://docs.aws.amazon.com/bedrock/latest/userguide/knowledge-base-create.html
+https://docs.aws.amazon.com/bedrock/latest/userguide/kb-chunking.html
+https://docs.aws.amazon.com/bedrock/latest/userguide/kb-how-retrieval.html
+https://docs.aws.amazon.com/bedrock/latest/userguide/kb-test-retrieve.html
+https://docs.aws.amazon.com/bedrock/latest/userguide/kb-test-retrieve-generate.html
+https://docs.aws.amazon.com/bedrock/latest/userguide/kb-test-config.html
+https://docs.aws.amazon.com/bedrock/latest/userguide/kb-custom-transformation.html
+https://docs.aws.amazon.com/bedrock/latest/userguide/kb-advanced-parsing.html
+https://docs.aws.amazon.com/bedrock/latest/userguide/webcrawl-data-source-connector.html
+https://docs.aws.amazon.com/bedrock/latest/userguide/evaluation-kb.html
+https://docs.aws.amazon.com/bedrock/latest/userguide/kb-info.html
+
+# Prompt Engineering (5)
+https://docs.aws.amazon.com/bedrock/latest/userguide/what-is-prompt-engineering.html
+https://docs.aws.amazon.com/bedrock/latest/userguide/prompt-engineering-guidelines.html
+https://docs.aws.amazon.com/bedrock/latest/userguide/design-a-prompt.html
+https://docs.aws.amazon.com/bedrock/latest/userguide/prompt-templates-and-examples.html
+https://docs.aws.amazon.com/bedrock/latest/userguide/prompting.html
+
+# Guardrails (6)
+https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails.html
+https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails-how.html
+https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails-content-filters.html
+https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails-sensitive-filters.html
+https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails-tagging.html
+https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails-contextual-grounding-check.html
+
+# API Reference (6)
+https://docs.aws.amazon.com/bedrock/latest/APIReference/API_runtime_InvokeModel.html
+https://docs.aws.amazon.com/bedrock/latest/APIReference/API_runtime_InvokeModelWithResponseStream.html
+https://docs.aws.amazon.com/bedrock/latest/APIReference/API_runtime_Converse.html
+https://docs.aws.amazon.com/bedrock/latest/APIReference/API_runtime_ConverseStream.html
+https://docs.aws.amazon.com/bedrock/latest/APIReference/API_runtime_CountTokens.html
+https://docs.aws.amazon.com/bedrock/latest/APIReference/API_runtime_ApplyGuardrail.html
