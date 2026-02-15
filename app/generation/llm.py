@@ -1,4 +1,4 @@
-"""LLM integration via Groq API with fallback for missing keys."""
+"""LLM integration via Mistral API (OpenAI-compatible) with fallback."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ import logging
 import re
 from dataclasses import dataclass
 
-from app.config import GROQ_API_KEY, GROQ_FALLBACK_MODELS, GROQ_MODEL, GROQ_TEMPERATURE
+from app.config import MISTRAL_API_KEY, MISTRAL_FALLBACK_MODELS, MISTRAL_MODEL, MISTRAL_TEMPERATURE
 from app.db.chroma import RetrievedChunk
 
 logger = logging.getLogger(__name__)
@@ -131,24 +131,24 @@ def _extract_citations(answer: str, contexts: list[RetrievedChunk]) -> list[Cita
 
 
 def is_llm_available() -> bool:
-    """Check if Groq API key is configured."""
-    return bool(GROQ_API_KEY)
+    """Check if Mistral API key is configured."""
+    return bool(MISTRAL_API_KEY)
 
 
 def check_llm_ready() -> dict:
-    """Verify Groq LLM is fully operational (key present + API probe).
+    """Verify Mistral LLM is fully operational (key present + API probe).
 
     Returns:
         {"ready": bool, "reason": str}
     """
-    if not GROQ_API_KEY:
-        return {"ready": False, "reason": "GROQ_API_KEY not set"}
+    if not MISTRAL_API_KEY:
+        return {"ready": False, "reason": "MISTRAL_API_KEY not set"}
 
     try:
-        from groq import Groq  # type: ignore
+        from openai import OpenAI  # type: ignore
 
-        client = Groq(api_key=GROQ_API_KEY)
-        last_reason = "No Groq model candidates available"
+        client = OpenAI(api_key=MISTRAL_API_KEY, base_url="https://api.mistral.ai/v1")
+        last_reason = "No Mistral model candidates available"
         for model in _candidate_models():
             try:
                 completion = client.chat.completions.create(
@@ -159,30 +159,29 @@ def check_llm_ready() -> dict:
                 )
                 text = (completion.choices[0].message.content or "").strip()
                 if "OK" in text.upper():
-                    return {"ready": True, "reason": f"Groq API operational (model: {model})"}
+                    return {"ready": True, "reason": f"Mistral API operational (model: {model})"}
                 last_reason = f"Unexpected probe response from {model}: {text!r}"
             except Exception as exc:  # noqa: BLE001
-                last_reason = f"Groq API probe failed for {model}: {exc}"
+                last_reason = f"Mistral API probe failed for {model}: {exc}"
         return {"ready": False, "reason": last_reason}
     except ImportError:
-        return {"ready": False, "reason": "groq package not installed"}
+        return {"ready": False, "reason": "openai package not installed"}
     except Exception as exc:  # noqa: BLE001
-        return {"ready": False, "reason": f"Groq API probe failed: {exc}"}
+        return {"ready": False, "reason": f"Mistral API probe failed: {exc}"}
 
 
 def generate_answer(
     question: str,
     contexts: list[RetrievedChunk],
 ) -> GeneratedAnswer:
-    """Generate an answer using Groq LLM (or fallback if unavailable)."""
+    """Generate an answer using Mistral LLM (or fallback if unavailable)."""
     if not is_llm_available():
         return _fallback_answer(contexts)
 
     try:
-        # Lazy import to avoid errors if groq not installed
-        from groq import Groq  # type: ignore
+        from openai import OpenAI  # type: ignore
 
-        client = Groq(api_key=GROQ_API_KEY)
+        client = OpenAI(api_key=MISTRAL_API_KEY, base_url="https://api.mistral.ai/v1")
         user_prompt = _build_user_prompt(question, contexts)
         last_exc: Exception | None = None
 
@@ -194,7 +193,7 @@ def generate_answer(
                         {"role": "system", "content": SYSTEM_PROMPT},
                         {"role": "user", "content": user_prompt},
                     ],
-                    temperature=GROQ_TEMPERATURE,
+                    temperature=MISTRAL_TEMPERATURE,
                     max_tokens=1024,
                 )
 
@@ -218,11 +217,79 @@ def generate_answer(
                 logger.warning("LLM generation failed for model %s: %s", model, exc)
 
         if last_exc is not None:
-            logger.warning("All Groq models failed for generation; returning null answer")
+            logger.warning("All Mistral models failed for generation; returning null answer")
         return _fallback_answer(contexts)
     except Exception as exc:  # noqa: BLE001
         logger.warning("LLM generation failed: %s", exc)
         return _fallback_answer(contexts)
+
+
+def generate_answer_stream(
+    question: str,
+    contexts: list[RetrievedChunk],
+):
+    """Stream answer tokens from Mistral LLM.
+
+    Yields dicts:
+      ``{"type": "token", "token": "..."}`` — partial token
+      ``{"type": "done", "answer": str|None, "citations": list}`` — final
+    """
+    if not is_llm_available():
+        yield {"type": "done", "answer": None, "citations": []}
+        return
+
+    try:
+        from openai import OpenAI  # type: ignore
+
+        client = OpenAI(api_key=MISTRAL_API_KEY, base_url="https://api.mistral.ai/v1")
+        user_prompt = _build_user_prompt(question, contexts)
+
+        for model in _candidate_models():
+            try:
+                stream = client.chat.completions.create(
+                    model=model,
+                    messages=[
+                        {"role": "system", "content": SYSTEM_PROMPT},
+                        {"role": "user", "content": user_prompt},
+                    ],
+                    temperature=MISTRAL_TEMPERATURE,
+                    max_tokens=1024,
+                    stream=True,
+                )
+
+                full_answer = ""
+                for chunk in stream:
+                    delta = chunk.choices[0].delta
+                    token = delta.content if delta and delta.content else ""
+                    if token:
+                        full_answer += token
+                        yield {"type": "token", "token": token}
+
+                full_answer = full_answer.strip()
+                if not full_answer or _is_unknown_answer(full_answer):
+                    yield {"type": "done", "answer": None, "citations": []}
+                    return
+
+                citations = _extract_citations(full_answer, contexts)
+                if not citations:
+                    yield {"type": "done", "answer": None, "citations": []}
+                    return
+
+                yield {
+                    "type": "done",
+                    "answer": full_answer,
+                    "citations": [
+                        {"doc_id": c.doc_id, "chunk_id": c.chunk_id} for c in citations
+                    ],
+                }
+                return
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("Streaming failed for model %s: %s", model, exc)
+
+        yield {"type": "done", "answer": None, "citations": []}
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Streaming generation failed: %s", exc)
+        yield {"type": "done", "answer": None, "citations": []}
 
 
 def _fallback_answer(_contexts: list[RetrievedChunk]) -> GeneratedAnswer:
@@ -239,7 +306,7 @@ def _candidate_models() -> list[str]:
     """Primary model followed by optional fallbacks without duplicates."""
     models: list[str] = []
     seen: set[str] = set()
-    for model in [GROQ_MODEL, *GROQ_FALLBACK_MODELS]:
+    for model in [MISTRAL_MODEL, *MISTRAL_FALLBACK_MODELS]:
         if model and model not in seen:
             models.append(model)
             seen.add(model)

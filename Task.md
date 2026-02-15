@@ -32,7 +32,7 @@ Build a containerized RAG pipeline that:
 
 | Requirement | Constraint |
 |---|---|
-| **LLM** | Use an API with a free tier (Groq). API-Key will pe provided by me and must be stored according to the best practices of Software Engineering. |
+| **LLM** | Use an API with a free tier (Mistral). API-Key will pe provided by me and must be stored according to the best practices of Software Engineering. |
 | **Embeddings** | Local embeddings model (sentence-transformers/all-MiniLM-L6-v2). |
 | **Vector Store** | **ChromaDB**. |
 | **Containerization** | Must have a `docker-compose.yml` that brings up the full stack (app + vector DB). I will provide use a sample Dockerfile. |

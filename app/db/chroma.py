@@ -16,6 +16,19 @@ logger = logging.getLogger(__name__)
 
 _client: chromadb.ClientAPI | None = None
 
+_MULTI_HOP_RE = re.compile(
+    r"\b(and|both|together|vs|versus|compared|complementary|influence|affect)\b",
+    re.IGNORECASE,
+)
+_BOILERPLATE_HINTS = (
+    "table of contents",
+    "was this page helpful",
+    "feedback",
+    "next steps",
+    "related resources",
+    "learn more",
+)
+
 
 @dataclass
 class RetrievedChunk:
@@ -27,6 +40,8 @@ class RetrievedChunk:
     score: float
     source_path: str
     content_type: str
+    vector_score: float | None = None
+    keyword_score: float | None = None
 
 
 def get_client() -> chromadb.ClientAPI:
@@ -54,8 +69,31 @@ def upsert_chunks(
     chunks: list[Chunk],
     embeddings: list[list[float]],
 ) -> int:
-    """Upsert chunks + embeddings into ChromaDB. Returns count upserted."""
+    """Upsert chunks + embeddings into ChromaDB.
+
+    Also deletes stale chunk IDs for ingested docs so re-ingestion with a new
+    chunking config stays idempotent (no orphaned old chunks).
+    """
     collection = get_collection()
+    if not chunks:
+        return 0
+
+    # Remove stale chunks per doc_id before upsert.
+    doc_to_new_ids: dict[str, set[str]] = {}
+    for c in chunks:
+        doc_to_new_ids.setdefault(c.doc_id, set()).add(c.chunk_id)
+
+    for doc_id, new_ids in doc_to_new_ids.items():
+        try:
+            existing = collection.get(where={"doc_id": doc_id}, include=[])
+            existing_ids = set(existing.get("ids", []) or [])
+            stale_ids = [cid for cid in existing_ids if cid not in new_ids]
+            if stale_ids:
+                collection.delete(ids=stale_ids)
+        except Exception:  # noqa: BLE001
+            # Continue with upsert even if stale cleanup fails for a doc.
+            pass
+
     # ChromaDB allows batches up to ~5 000; we batch at 500 for safety.
     batch_size = 500
     total = 0
@@ -115,8 +153,11 @@ def query_chunks(
     """
     collection = get_collection()
 
-    # Fetch more than top_k to allow for diversity filtering.
-    fetch_k = top_k * 3
+    # Fetch more than top_k to allow for diversity and filtering.
+    fetch_k = max(top_k * 4, 24)
+    multi_hop_query = bool(_MULTI_HOP_RE.search(question)) and len(question.split()) >= 7
+    if multi_hop_query:
+        fetch_k = max(fetch_k, top_k * 10, 60)
     q = question.strip().lower()
     if "what is" in q and "amazon bedrock" in q:
         # Definition queries are broad; fetch deeper so the canonical
@@ -148,6 +189,14 @@ def query_chunks(
         )
         for i in range(len(ids))
     ]
+
+    # Drop obvious navigation/boilerplate chunks when alternatives exist.
+    cleaned_candidates = [
+        c for c in candidates
+        if not any(h in c.text.lower() for h in _BOILERPLATE_HINTS)
+    ]
+    if cleaned_candidates:
+        candidates = cleaned_candidates
 
     # Minimal definition-query boost: prioritize "what-is-bedrock" docs
     # when the user asks "What is Amazon Bedrock?".
@@ -221,13 +270,15 @@ def query_chunks(
                 break
         return runtime_results[:top_k]
 
-    # Apply diversity: max *max_per_doc* chunks per doc_id
+    # Apply diversity: max *max_per_doc* chunks per doc_id.
+    # Multi-hop questions need breadth across documents, so force 1/doc.
+    effective_max_per_doc = 1 if multi_hop_query else max_per_doc
     doc_counts: dict[str, int] = {}
     diverse_results: list[RetrievedChunk] = []
 
     for chunk in candidates:
         count = doc_counts.get(chunk.doc_id, 0)
-        if count < max_per_doc:
+        if count < effective_max_per_doc:
             diverse_results.append(chunk)
             doc_counts[chunk.doc_id] = count + 1
         if len(diverse_results) >= top_k * 2:  # gather extra for balancing

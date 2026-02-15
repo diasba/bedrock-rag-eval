@@ -35,11 +35,39 @@ class LoadResult:
 # ── Helpers ────────────────────────────────────────────────────────────
 
 def _normalize(text: str) -> str:
-    """Collapse runs of whitespace / blank lines into single spaces."""
+    """Normalize text while removing obvious navigation boilerplate."""
     import re
-    text = re.sub(r"[ \t]+", " ", text)
-    text = re.sub(r"\n{3,}", "\n\n", text)
-    return text.strip()
+
+    boilerplate = {
+        "table of contents",
+        "contents",
+        "on this page",
+        "related resources",
+        "was this page helpful",
+        "feedback",
+        "learn more",
+    }
+
+    cleaned_lines: list[str] = []
+    prev = ""
+    for raw in text.splitlines():
+        line = re.sub(r"\s+", " ", raw).strip()
+        if not line:
+            continue
+        low = line.lower()
+        if low in boilerplate:
+            continue
+        if len(low) < 3 and not any(ch.isdigit() for ch in low):
+            continue
+        if line == prev:
+            continue
+        cleaned_lines.append(line)
+        prev = line
+
+    normalized = "\n".join(cleaned_lines)
+    normalized = re.sub(r"[ \t]+", " ", normalized)
+    normalized = re.sub(r"\n{3,}", "\n\n", normalized)
+    return normalized.strip()
 
 
 def _read_text(path: Path) -> str:

@@ -26,6 +26,9 @@ def _mock_stack():
         patch("app.db.chroma.get_client"),
         patch("app.main.heartbeat", return_value=True),
         patch("app.main.check_llm_ready", return_value={"ready": False, "reason": "mocked"}),
+        patch("app.main.query_cache", None),
+        patch("app.main.HYBRID_ENABLED", False),
+        patch("app.main.RERANK_ENABLED", False),
     ):
         yield mock_embed
 
@@ -517,7 +520,7 @@ def test_health_llm_ready_reflects_container_state():
         patch("app.db.chroma.get_client"),
         patch("app.main.heartbeat", return_value=True),
         patch("app.main.check_llm_ready", return_value={
-            "ready": True, "reason": "Groq API operational (model: test)",
+            "ready": True, "reason": "Mistral API operational (model: test)",
         }),
     ):
         from app.main import app
@@ -637,3 +640,237 @@ def test_eval_runner_normalizes_refusals():
     # Real answers
     assert _is_refusal("Amazon Bedrock is a service.") is False
     assert _is_refusal("You can use CountTokens API.") is False
+
+
+# ── Test: query cache ──────────────────────────────────────────────────
+
+def test_query_cache_hit(client: TestClient):
+    """Repeated identical queries must return a cache hit."""
+    from app.retrieval.cache import QueryCache
+
+    cache = QueryCache(ttl_sec=60)
+    chunks = [_make_retrieved_chunk(score=0.85)]
+    from app.generation.llm import Citation, GeneratedAnswer
+
+    gen_result = GeneratedAnswer(
+        answer="Amazon Bedrock tracks metrics [Chunk 1].",
+        citations=[Citation(doc_id=chunks[0].doc_id, chunk_id=chunks[0].chunk_id)],
+    )
+
+    with (
+        patch("app.main.query_chunks", return_value=chunks),
+        patch("app.main.generate_answer", return_value=gen_result),
+        patch("app.main.query_cache", cache),
+    ):
+        # First call — cache miss, populates cache
+        resp1 = client.post("/query", json={"question": "What metrics?"})
+        assert resp1.status_code == 200
+        data1 = resp1.json()
+        assert data1["answer"] is not None
+        assert data1.get("cache_hit") is None  # first call
+
+        # Second call — should hit cache
+        resp2 = client.post("/query", json={"question": "What metrics?"})
+        assert resp2.status_code == 200
+        data2 = resp2.json()
+        assert data2["cache_hit"] is True
+        assert data2["answer"] == data1["answer"]
+
+
+def test_query_cache_disabled(client: TestClient):
+    """With cache=None, every call goes through the full pipeline."""
+    chunks = [_make_retrieved_chunk(score=0.85)]
+    from app.generation.llm import Citation, GeneratedAnswer
+
+    gen_result = GeneratedAnswer(
+        answer="Answer [Chunk 1].",
+        citations=[Citation(doc_id=chunks[0].doc_id, chunk_id=chunks[0].chunk_id)],
+    )
+
+    with (
+        patch("app.main.query_chunks", return_value=chunks),
+        patch("app.main.generate_answer", return_value=gen_result),
+        patch("app.main.query_cache", None),
+    ):
+        resp = client.post("/query", json={"question": "test?"})
+        assert resp.status_code == 200
+        assert resp.json().get("cache_hit") is None
+
+
+def test_query_cache_key_includes_include_context(client: TestClient):
+    """Cache entries must differ between include_context=false/true."""
+    from app.retrieval.cache import QueryCache
+
+    cache = QueryCache(ttl_sec=60)
+    chunks = [_make_retrieved_chunk(score=0.85)]
+    from app.generation.llm import Citation, GeneratedAnswer
+
+    gen_result = GeneratedAnswer(
+        answer="Answer [Chunk 1].",
+        citations=[Citation(doc_id=chunks[0].doc_id, chunk_id=chunks[0].chunk_id)],
+    )
+
+    with (
+        patch("app.main.query_chunks", return_value=chunks),
+        patch("app.main.generate_answer", return_value=gen_result),
+        patch("app.main.query_cache", cache),
+    ):
+        # First call without context populates one cache key
+        resp1 = client.post(
+            "/query", json={"question": "What metrics?", "include_context": False},
+        )
+        assert resp1.status_code == 200
+        assert resp1.json().get("cache_hit") is None
+
+        # Same question with include_context=True must NOT hit previous key
+        resp2 = client.post(
+            "/query", json={"question": "What metrics?", "include_context": True},
+        )
+        assert resp2.status_code == 200
+        data2 = resp2.json()
+        assert data2.get("cache_hit") is None
+        assert data2["retrieved"] is not None
+
+        # Repeating include_context=True should now hit cache
+        resp3 = client.post(
+            "/query", json={"question": "What metrics?", "include_context": True},
+        )
+        assert resp3.status_code == 200
+        assert resp3.json().get("cache_hit") is True
+
+
+# ── Test: hybrid merge ─────────────────────────────────────────────────
+
+def test_hybrid_merge_boosts_bm25_match():
+    """Hybrid merge should boost chunks that appear in both vector and BM25."""
+    from app.retrieval.hybrid import BM25Index, hybrid_merge
+    from app.db.chroma import RetrievedChunk
+
+    vec_results = [
+        RetrievedChunk(
+            chunk_id="a#0", doc_id="a", text="Amazon Bedrock metrics Invocations",
+            score=0.8, source_path="/a", content_type="md",
+        ),
+        RetrievedChunk(
+            chunk_id="b#0", doc_id="b", text="Unrelated content",
+            score=0.6, source_path="/b", content_type="md",
+        ),
+    ]
+
+    idx = BM25Index()
+    # Simulate BM25 results: 'a#0' has a high BM25 score, 'c#0' is BM25-only
+    bm25_results = [("a#0", 5.0), ("c#0", 3.0)]
+
+    # Store chunk data for the BM25-only result
+    idx._chunk_map["c#0"] = {
+        "chunk_id": "c#0", "doc_id": "c", "text": "BM25 only chunk",
+        "source_path": "/c", "content_type": "md",
+    }
+    idx._ready = True
+
+    merged = hybrid_merge(
+        vec_results, bm25_results, idx, top_k=4,
+        vector_weight=0.7, keyword_weight=0.3,
+    )
+
+    # 'a#0' should be first (boosted by both vector + BM25)
+    assert merged[0].chunk_id == "a#0"
+    assert merged[0].score > 0.8  # boosted above original vector score
+    # BM25-only result should be included
+    bm25_only = [c for c in merged if c.chunk_id == "c#0"]
+    assert len(bm25_only) == 1
+
+
+# ── Test: streaming endpoint ───────────────────────────────────────────
+
+def test_query_stream_returns_sse(client: TestClient):
+    """POST /query/stream must return SSE with token and done events."""
+    chunks = [_make_retrieved_chunk(score=0.85)]
+
+    stream_events = [
+        {"type": "token", "token": "Hello"},
+        {"type": "token", "token": " world"},
+        {"type": "done", "answer": "Hello world [Chunk 1].",
+         "citations": [{"doc_id": chunks[0].doc_id, "chunk_id": chunks[0].chunk_id}]},
+    ]
+
+    with (
+        patch("app.main.query_chunks", return_value=chunks),
+        patch("app.main.generate_answer_stream", return_value=iter(stream_events)),
+    ):
+        resp = client.post(
+            "/query/stream",
+            json={"question": "What metrics?"},
+        )
+
+    assert resp.status_code == 200
+    body = resp.text
+    assert "event: token" in body
+    assert "event: done" in body
+    assert "Hello" in body
+
+
+# ── Test: ingest with custom chunk params ──────────────────────────────
+
+def test_ingest_custom_chunk_params(client: TestClient):
+    """POST /ingest with chunk_size/chunk_overlap overrides must use them."""
+    from app.ingest.loader import LoadResult, LoadedDoc
+
+    fake_doc = LoadedDoc(
+        doc_id="test.md", text="x" * 2000,
+        source_path="/tmp/test.md", content_type="md",
+    )
+    load_result = LoadResult(docs=[fake_doc], errors=[])
+
+    with (
+        patch("app.main.load_folder", return_value=load_result),
+        patch("app.main.embed_texts", return_value=[[0.1] * 384] * 20),
+        patch("app.main.upsert_chunks", return_value=5) as mock_upsert,
+        patch("app.main.HYBRID_ENABLED", False),
+    ):
+        resp = client.post("/ingest", json={
+            "path": "/tmp",
+            "chunk_size": 200,
+            "chunk_overlap": 50,
+        })
+
+    assert resp.status_code == 200
+    data = resp.json()
+    # With chunk_size=200 and 2000 chars, we should get more chunks than default 800
+    assert data["chunks_total"] > 2
+
+
+def test_ingest_clamps_unsafe_chunk_params(client: TestClient):
+    """Unsafe chunk params must be clamped to safe ranges."""
+    from app.ingest.loader import LoadResult, LoadedDoc
+
+    fake_doc = LoadedDoc(
+        doc_id="test.md", text="x" * 500,
+        source_path="/tmp/test.md", content_type="md",
+    )
+    load_result = LoadResult(docs=[fake_doc], errors=[])
+
+    with (
+        patch("app.main.load_folder", return_value=load_result),
+        patch("app.main.embed_texts", return_value=[[0.1] * 384] * 10),
+        patch("app.main.upsert_chunks", return_value=1),
+        patch("app.main.HYBRID_ENABLED", False),
+    ):
+        # chunk_size=10 should clamp to 100
+        resp = client.post("/ingest", json={
+            "path": "/tmp",
+            "chunk_size": 10,
+            "chunk_overlap": 5000,
+        })
+
+    assert resp.status_code == 200
+
+
+# ── Test: web UI endpoint ──────────────────────────────────────────────
+
+def test_ui_endpoint_returns_html(client: TestClient):
+    """GET /ui must return the HTML interface."""
+    resp = client.get("/ui")
+    assert resp.status_code == 200
+    assert "text/html" in resp.headers["content-type"]
+    assert "Bedrock RAG" in resp.text

@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bedrock RAG</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{
+    font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+    background:#f5f7fa;color:#1a1a2e;max-width:860px;margin:0 auto;padding:24px;
+  }
+  h1{font-size:1.8rem;margin-bottom:4px}
+  .subtitle{color:#666;margin-bottom:20px;font-size:.95rem}
+  .card{
+    background:#fff;border-radius:12px;padding:20px;
+    box-shadow:0 1px 4px rgba(0,0,0,.08);margin-bottom:16px;
+  }
+  textarea{
+    width:100%;border:1px solid #ddd;border-radius:8px;padding:12px;
+    font-size:1rem;resize:vertical;min-height:80px;font-family:inherit;
+  }
+  textarea:focus{outline:none;border-color:#4361ee;box-shadow:0 0 0 3px rgba(67,97,238,.15)}
+  .controls{display:flex;gap:16px;align-items:center;margin-top:12px;flex-wrap:wrap}
+  button{
+    background:#4361ee;color:#fff;border:none;padding:10px 24px;
+    border-radius:8px;font-size:1rem;cursor:pointer;font-weight:500;
+  }
+  button:hover{background:#3a56d4}
+  button:disabled{background:#a0b0d0;cursor:not-allowed}
+  label{display:flex;align-items:center;gap:6px;font-size:.9rem;color:#555}
+  .answer-box{min-height:40px;white-space:pre-wrap;line-height:1.6}
+  .answer-null{color:#888;font-style:italic}
+  .citations{margin-top:12px}
+  .citation{
+    display:inline-block;background:#eef1ff;color:#4361ee;
+    padding:4px 10px;border-radius:6px;font-size:.85rem;margin:3px 4px 3px 0;
+  }
+  .ctx-chunk{
+    background:#f8f9fb;border-left:3px solid #4361ee;padding:10px 14px;
+    margin-top:8px;border-radius:0 8px 8px 0;font-size:.88rem;
+  }
+  .ctx-chunk .meta{font-weight:600;font-size:.82rem;color:#666;margin-bottom:4px}
+  .badge{
+    display:inline-block;padding:2px 8px;border-radius:4px;
+    font-size:.78rem;font-weight:600;margin-bottom:6px;
+  }
+  .badge-hit{background:#e8fbe8;color:#2a7a2a}
+  .badge-miss{background:#fdf0e0;color:#b07020}
+  .spinner{
+    display:inline-block;width:18px;height:18px;
+    border:2px solid #ddd;border-top-color:#4361ee;border-radius:50%;
+    animation:spin .6s linear infinite;vertical-align:middle;
+  }
+  @keyframes spin{to{transform:rotate(360deg)}}
+  .hidden{display:none}
+</style>
+</head>
+<body>
+
+<h1>🔍 Bedrock RAG</h1>
+<p class="subtitle">Ask questions about AWS Bedrock documentation</p>
+
+<!-- ── Input card ──────────────────────────────────────────────── -->
+<div class="card">
+  <textarea id="question" placeholder="e.g. What is Amazon Bedrock?"></textarea>
+  <div class="controls">
+    <button id="askBtn" onclick="ask()">Ask</button>
+    <label><input type="checkbox" id="streaming" checked> Streaming</label>
+    <label><input type="checkbox" id="includeCtx"> Show retrieved context</label>
+    <span id="loading" class="hidden"><span class="spinner"></span> Thinking…</span>
+  </div>
+</div>
+
+<!-- ── Answer card ─────────────────────────────────────────────── -->
+<div id="resultCard" class="card hidden">
+  <div id="cacheTag"></div>
+  <div id="answerBox" class="answer-box"></div>
+  <div id="citationsBox" class="citations hidden"></div>
+</div>
+
+<!-- ── Context card ────────────────────────────────────────────── -->
+<div id="contextCard" class="card hidden">
+  <strong>Retrieved Chunks</strong>
+  <div id="contextBox"></div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+
+/* ── helpers ───────────────────────────────────────────────── */
+function escHtml(s){const d=document.createElement('div');d.textContent=s;return d.innerHTML}
+function resetUI(){
+  $('resultCard').classList.add('hidden');
+  $('contextCard').classList.add('hidden');
+  $('answerBox').textContent='';
+  $('citationsBox').innerHTML='';
+  $('cacheTag').innerHTML='';
+  $('contextBox').innerHTML='';
+}
+
+/* ── main entry ────────────────────────────────────────────── */
+async function ask(){
+  const q=$('question').value.trim();
+  if(!q) return;
+  const streaming=$('streaming').checked;
+  const includeCtx=$('includeCtx').checked;
+
+  $('askBtn').disabled=true;
+  $('loading').classList.remove('hidden');
+  resetUI();
+
+  try{
+    if(streaming) await streamQuery(q,includeCtx);
+    else          await regularQuery(q,includeCtx);
+  }catch(err){
+    $('answerBox').textContent='Error: '+err.message;
+    $('answerBox').className='answer-box answer-null';
+    $('resultCard').classList.remove('hidden');
+  }finally{
+    $('askBtn').disabled=false;
+    $('loading').classList.add('hidden');
+  }
+}
+
+/* ── regular (non-streaming) query ─────────────────────────── */
+async function regularQuery(q,includeCtx){
+  const resp=await fetch('/query',{
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({question:q,include_context:includeCtx}),
+  });
+  const data=await resp.json();
+  showResult(data);
+}
+
+/* ── streaming query via SSE ───────────────────────────────── */
+async function streamQuery(q,includeCtx){
+  const resp=await fetch('/query/stream',{
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({question:q,include_context:includeCtx}),
+  });
+
+  $('resultCard').classList.remove('hidden');
+  $('answerBox').className='answer-box';
+
+  const reader=resp.body.getReader();
+  const decoder=new TextDecoder();
+  let buffer='', tokens='', eventType='';
+
+  while(true){
+    const{done,value}=await reader.read();
+    if(done) break;
+    buffer+=decoder.decode(value,{stream:true});
+
+    const lines=buffer.split('\n');
+    buffer=lines.pop();            // keep incomplete line
+
+    for(const line of lines){
+      if(line.startsWith('event: ')){
+        eventType=line.slice(7).trim();
+      }else if(line.startsWith('data: ')){
+        const payload=JSON.parse(line.slice(6));
+        if(eventType==='token'){
+          tokens+=payload.token;
+          $('answerBox').textContent=tokens;
+        }else if(eventType==='done'||eventType==='cached'){
+          showResult(payload);
+        }
+      }
+    }
+  }
+}
+
+/* ── render result ─────────────────────────────────────────── */
+function showResult(data){
+  $('resultCard').classList.remove('hidden');
+
+  /* cache badge */
+  if(data.cache_hit){
+    $('cacheTag').innerHTML='<span class="badge badge-hit">CACHE HIT</span>';
+  }else{
+    $('cacheTag').innerHTML='';
+  }
+
+  /* answer */
+  if(data.answer==null){
+    $('answerBox').textContent='No answer found in the corpus.';
+    $('answerBox').className='answer-box answer-null';
+  }else{
+    $('answerBox').textContent=data.answer;
+    $('answerBox').className='answer-box';
+  }
+
+  /* citations */
+  const cits=data.citations||[];
+  if(cits.length){
+    $('citationsBox').classList.remove('hidden');
+    $('citationsBox').innerHTML='<strong>Citations:</strong> '+
+      cits.map(c=>`<span class="citation">${escHtml(c.doc_id)} — ${escHtml(c.chunk_id)}</span>`).join('');
+  }else{
+    $('citationsBox').classList.add('hidden');
+  }
+
+  /* retrieved context */
+  const chunks=data.retrieved||[];
+  if(chunks.length){
+    $('contextCard').classList.remove('hidden');
+    $('contextBox').innerHTML=chunks.map(c=>{
+      let meta=`${escHtml(c.doc_id)} | score: ${c.score}`;
+      if(c.vector_score!=null) meta+=` (vec: ${c.vector_score}, kw: ${c.keyword_score})`;
+      return `<div class="ctx-chunk"><div class="meta">${meta}</div>${escHtml(c.text.slice(0,500))}</div>`;
+    }).join('');
+  }
+}
+
+/* ── keyboard shortcut: Ctrl/⌘+Enter → submit ─────────────── */
+$('question').addEventListener('keydown',e=>{
+  if((e.ctrlKey||e.metaKey)&&e.key==='Enter') ask();
+});
+</script>
+</body>
+</html>

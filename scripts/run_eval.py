@@ -5,8 +5,8 @@ produces eval_results.json, per_question_results.csv, and eval_report.md.
 Modes:
   • Default (heuristic-only): no paid API keys required.  Runs deterministic
     retrieval metrics and token-overlap heuristics.  Always succeeds.
-  • Judge mode: activated automatically when GROQ_API_KEY is set.  Uses
-    Groq-backed LLM judge (via LiteLLM provider prefix) for faithfulness,
+  • Judge mode: activated automatically when MISTRAL_API_KEY is set.  Uses
+    Mistral-backed LLM judge for faithfulness,
     answer relevancy, and answer correctness.  Falls back to heuristics on
     any failure.
 
@@ -14,10 +14,11 @@ Usage:
     # heuristic-only (no keys needed)
     python scripts/run_eval.py \
         --dataset data/eval/eval_dataset.jsonl \
-        --api-url http://localhost:8000
+        --api-url http://localhost:8000 \
+        --top-k 4
 
-    # judge mode (Groq key present)
-    GROQ_API_KEY=gsk_... python scripts/run_eval.py \
+    # judge mode (Mistral key present)
+    MISTRAL_API_KEY=... python scripts/run_eval.py \
         --dataset data/eval/eval_dataset.jsonl \
         --api-url http://localhost:8000
 """
@@ -50,8 +51,8 @@ logger = logging.getLogger(__name__)
 
 # ── Constants ──────────────────────────────────────────────────────────
 
-GROQ_JUDGE_MODEL = "groq/llama-3.3-70b-versatile"
-"""LiteLLM-style model string used when judge mode is active."""
+MISTRAL_JUDGE_MODEL = "mistral-small-latest"
+"""Mistral model used as LLM judge when judge mode is active."""
 
 # ── Data structures ────────────────────────────────────────────────────
 
@@ -103,12 +104,12 @@ class AggregateScores:
 
 
 def detect_judge_mode() -> bool:
-    """Return True if a Groq API key is available for LLM-judge metrics."""
-    key = os.environ.get("GROQ_API_KEY", "").strip()
+    """Return True if a Mistral API key is available for LLM-judge metrics."""
+    key = os.environ.get("MISTRAL_API_KEY", "").strip()
     if key:
-        logger.info("GROQ_API_KEY detected — judge mode ENABLED (model: %s)", GROQ_JUDGE_MODEL)
+        logger.info("MISTRAL_API_KEY detected — judge mode ENABLED (model: %s)", MISTRAL_JUDGE_MODEL)
         return True
-    logger.info("No GROQ_API_KEY — running in heuristic-only mode (no paid keys required)")
+    logger.info("No MISTRAL_API_KEY — running in heuristic-only mode (no paid keys required)")
     return False
 
 
@@ -137,12 +138,19 @@ def load_dataset(path: str) -> list[EvalRecord]:
 
 
 def call_query_api(
-    record: EvalRecord, api_url: str, client: httpx.Client,
+    record: EvalRecord,
+    api_url: str,
+    client: httpx.Client,
+    top_k: int,
 ) -> PredictionRecord:
     """Call POST /query and collect prediction."""
     resp = client.post(
         f"{api_url}/query",
-        json={"question": record.question, "include_context": True},
+        json={
+            "question": record.question,
+            "include_context": True,
+            "top_k": top_k,
+        },
         timeout=120.0,
     )
     resp.raise_for_status()
@@ -166,14 +174,16 @@ def call_query_api(
 
 
 def collect_predictions(
-    records: list[EvalRecord], api_url: str,
+    records: list[EvalRecord],
+    api_url: str,
+    top_k: int,
 ) -> list[PredictionRecord]:
     predictions: list[PredictionRecord] = []
     with httpx.Client() as client:
         for i, rec in enumerate(records, 1):
             logger.info("[%d/%d] Querying: %s", i, len(records), rec.question[:60])
             try:
-                pred = call_query_api(rec, api_url, client)
+                pred = call_query_api(rec, api_url, client, top_k)
                 predictions.append(pred)
             except Exception as exc:
                 logger.warning("Failed for question %d: %s", i, exc)
@@ -187,7 +197,7 @@ def collect_predictions(
                     citations=[],
                     retrieval_scores=[],
                 ))
-            # Small delay to avoid rate-limiting Groq
+            # Small delay to avoid rate-limiting Mistral
             time.sleep(1.5)
     return predictions
 
@@ -362,17 +372,18 @@ def compute_heuristic_metrics(
     return results
 
 
-# ── 3b. Judge-backed metrics (RAGAS + DeepEval via Groq) ─────────────
+# ── 3b. Judge-backed metrics (RAGAS + DeepEval via Mistral) ─────────────
 
 
 def _try_ragas_judge(
     predictions: list[PredictionRecord],
     results: list[QuestionResult],
 ) -> tuple[list[QuestionResult], bool]:
-    """Attempt RAGAS judge metrics using Groq via langchain-groq.
+    """Attempt RAGAS judge metrics using Mistral via langchain-openai.
     On ANY failure, logs a warning and returns results untouched.
     Returns (results, actually_applied)."""
     try:
+        from ragas.run_config import RunConfig
         from datasets import Dataset
         from ragas import evaluate
         from ragas.metrics import (
@@ -381,17 +392,26 @@ def _try_ragas_judge(
             context_recall,
             faithfulness,
         )
-        from langchain_groq import ChatGroq
+        from langchain_openai import ChatOpenAI
+        try:
+            from langchain_community.embeddings import HuggingFaceEmbeddings
+        except ImportError:
+            from langchain_huggingface import HuggingFaceEmbeddings
     except ImportError as exc:
-        logger.warning("RAGAS/langchain-groq not installed — skipping judge metrics: %s", exc)
+        logger.warning("RAGAS/langchain-openai not installed — skipping judge metrics: %s", exc)
         return results, False
 
     try:
-        # Configure LLM wrapper for RAGAS using Groq
-        llm = ChatGroq(
-            model="llama-3.3-70b-versatile",
-            api_key=os.environ["GROQ_API_KEY"],
+        # Configure LLM wrapper for RAGAS using Mistral's OpenAI-compatible API
+        llm = ChatOpenAI(
+            model=MISTRAL_JUDGE_MODEL,
+            api_key=os.environ["MISTRAL_API_KEY"],
+            base_url="https://api.mistral.ai/v1",
             temperature=0.0,
+        )
+        # Force local embeddings so RAGAS never falls back to OpenAI embeddings.
+        embeddings = HuggingFaceEmbeddings(
+            model_name="sentence-transformers/all-MiniLM-L6-v2",
         )
 
         ragas_data = {
@@ -411,12 +431,17 @@ def _try_ragas_judge(
             )
 
         dataset = Dataset.from_dict(ragas_data)
-        logger.info("Running RAGAS judge evaluation on %d samples (Groq-backed)...", len(predictions))
+        # Mistral does not support n > 1. RAGAS default strictness for answer
+        # relevancy is 3, which triggers n=3 calls and errors.
+        answer_relevancy.strictness = 1
+        logger.info("Running RAGAS judge evaluation on %d samples (Mistral-backed)...", len(predictions))
 
         result = evaluate(
             dataset=dataset,
             metrics=[context_precision, context_recall, faithfulness, answer_relevancy],
             llm=llm,
+            embeddings=embeddings,
+            run_config=RunConfig(max_workers=1, max_retries=2, max_wait=20),
         )
 
         result_df = result.to_pandas()
@@ -446,32 +471,98 @@ def _try_deepeval_judge(
     predictions: list[PredictionRecord],
     results: list[QuestionResult],
 ) -> tuple[list[QuestionResult], bool]:
-    """Attempt DeepEval GEval correctness using Groq via LiteLLM.
+    """Attempt DeepEval GEval correctness using a Mistral custom adapter.
     On ANY failure, logs a warning and returns results untouched.
     Returns (results, actually_applied)."""
     try:
         from deepeval.metrics import GEval
         from deepeval.test_case import LLMTestCase, LLMTestCaseParams
+        from deepeval.models.base_model import DeepEvalBaseLLM
+        from openai import OpenAI
     except ImportError as exc:
         logger.warning("DeepEval not installed — skipping judge correctness: %s", exc)
         return results, False
 
     try:
-        # Tell DeepEval to use the Groq model via LiteLLM
+        class MistralDeepEvalModel(DeepEvalBaseLLM):
+            """Minimal DeepEval adapter using Mistral's OpenAI-compatible endpoint."""
+
+            def __init__(self, model_name: str, api_key: str, temperature: float = 0.0):
+                self._model_name = model_name
+                self._api_key = api_key
+                self._temperature = temperature
+                super().__init__(model=self._model_name)
+
+            def load_model(self):
+                return OpenAI(
+                    api_key=self._api_key,
+                    base_url="https://api.mistral.ai/v1",
+                )
+
+            @staticmethod
+            def _extract_json_blob(text: str) -> str:
+                text = (text or "").strip()
+                if text.startswith("```"):
+                    text = text.strip("`")
+                    parts = text.split("\n", 1)
+                    text = parts[1] if len(parts) > 1 else text
+                start = text.find("{")
+                end = text.rfind("}")
+                if start != -1 and end != -1 and end > start:
+                    return text[start:end + 1]
+                return text
+
+            def generate(self, prompt: str, schema=None) -> str:
+                response = self.model.chat.completions.create(
+                    model=self._model_name,
+                    messages=[{"role": "user", "content": prompt}],
+                    temperature=self._temperature,
+                )
+                text = (response.choices[0].message.content or "").strip()
+                if schema is None:
+                    return text
+                try:
+                    data = json.loads(self._extract_json_blob(text))
+                    return schema(**data)
+                except Exception:
+                    return text
+
+            async def a_generate(self, prompt: str, schema=None) -> str:
+                return self.generate(prompt=prompt, schema=schema)
+
+            def get_model_name(self) -> str:
+                return f"mistral/{self._model_name}"
+
+            def supports_log_probs(self):
+                return False
+
+        judge_key = os.environ.get("MISTRAL_API_KEY", "").strip()
+        if not judge_key:
+            logger.warning("MISTRAL_API_KEY missing on host — skipping DeepEval judge.")
+            return results, False
+
+        judge_llm = MistralDeepEvalModel(
+            model_name=MISTRAL_JUDGE_MODEL,
+            api_key=judge_key,
+            temperature=0.0,
+        )
         metric = GEval(
             name="Answer Correctness",
             criteria="Determine whether the actual output is factually correct based on the expected output.",
             evaluation_params=[LLMTestCaseParams.ACTUAL_OUTPUT, LLMTestCaseParams.EXPECTED_OUTPUT],
             threshold=0.5,
-            model=GROQ_JUDGE_MODEL,
+            model=judge_llm,
         )
 
-        logger.info("Running DeepEval GEval correctness on %d samples (Groq-backed)...", len(predictions))
+        logger.info("Running DeepEval GEval correctness on %d samples (Mistral-backed)...", len(predictions))
 
+        attempted = 0
+        updated = 0
         for i, p in enumerate(predictions):
             if p.ground_truth_answer is None:
                 # No-answer: keep existing heuristic score
                 continue
+            attempted += 1
             try:
                 test_case = LLMTestCase(
                     input=p.question,
@@ -480,13 +571,40 @@ def _try_deepeval_judge(
                 )
                 metric.measure(test_case)
                 if metric.score is not None:
-                    results[i].answer_correctness = round(metric.score, 4)
+                    # DeepEval GEval tends to cluster around a few coarse bins
+                    # (for example 0.7 / 0.8). Blend with lexical F1 to keep
+                    # score ordering informative while preserving judge signal.
+                    lexical = _heuristic_correctness(
+                        p.predicted_answer,
+                        p.ground_truth_answer,
+                    )
+                    blended = 0.75 * float(metric.score) + 0.25 * lexical
+                    results[i].answer_correctness = round(blended, 4)
+                    updated += 1
             except Exception as exc:
                 logger.warning(
                     "DeepEval GEval failed for q%d — keeping heuristic: %s", i + 1, exc,
                 )
 
-        logger.info("DeepEval judge correctness applied successfully")
+        if updated == 0:
+            logger.warning(
+                "DeepEval judge produced no usable scores (%d attempted); keeping heuristic correctness.",
+                attempted,
+            )
+            return results, False
+
+        coverage = updated / attempted if attempted else 0.0
+        if coverage < 0.8:
+            logger.warning(
+                "DeepEval judge coverage is low (%d/%d = %.1f%%); treating correctness as mixed fallback.",
+                updated, attempted, coverage * 100,
+            )
+            return results, False
+
+        logger.info(
+            "DeepEval judge correctness applied successfully (%d/%d scored)",
+            updated, attempted,
+        )
 
     except Exception as exc:
         logger.warning("DeepEval judge init failed — keeping heuristic scores: %s", exc)
@@ -601,7 +719,7 @@ def generate_report(
     # ── Mode banner ───────────────────────────────────────────────────
     if metrics_source == "judge":
         lines.append(
-            "> **Metrics mode:** Judge-backed (Groq LLM via LiteLLM).  "
+            "> **Metrics mode:** Judge-backed (Mistral LLM).  "
             "Faithfulness, answer relevancy, and answer correctness were "
             "computed by an LLM judge where possible; heuristic fallback "
             "was used for any questions where the judge failed.\n"
@@ -616,13 +734,13 @@ def generate_report(
         banner_reason = ""
         if judge_mode and not llm_enabled:
             banner_reason = (
-                "  GROQ_API_KEY is set on the host, but the API container "
+                "  MISTRAL_API_KEY is set on the host, but the API container "
                 "reported LLM not ready — judge metrics were skipped."
             )
         elif judge_mode:
             banner_reason = (
                 "  Judge mode was requested but judge frameworks "
-                "(langchain-groq / deepeval) failed or are not installed "
+                "(langchain-openai / deepeval) failed or are not installed "
                 "on the host — all scores are heuristic fallback."
             )
         lines.append(
@@ -641,6 +759,38 @@ def generate_report(
     lines.append(f"| Answer Relevancy | {agg.answer_relevancy:.4f} |")
     lines.append(f"| Answer Correctness | {agg.answer_correctness:.4f} |")
     lines.append("")
+
+    # ── Split by answerable vs no-answer ─────────────────────────────
+    answerable_results = [
+        r for r in results if r.ground_truth_answer is not None
+    ]
+    no_answer_results = [
+        r for r in results if r.ground_truth_answer is None
+    ]
+
+    if answerable_results:
+        ans_agg = aggregate_scores(answerable_results)
+        lines.append("## Answerable-Only Scores\n")
+        lines.append("| Metric | Score |")
+        lines.append("|---|---|")
+        lines.append(f"| Context Precision | {ans_agg.context_precision:.4f} |")
+        lines.append(f"| Context Recall | {ans_agg.context_recall:.4f} |")
+        lines.append(f"| Faithfulness | {ans_agg.faithfulness:.4f} |")
+        lines.append(f"| Answer Relevancy | {ans_agg.answer_relevancy:.4f} |")
+        lines.append(f"| Answer Correctness | {ans_agg.answer_correctness:.4f} |")
+        lines.append("")
+
+    if no_answer_results:
+        total_no_answer = len(no_answer_results)
+        no_answer_pred_null = sum(
+            1 for r in no_answer_results if r.predicted_answer is None
+        )
+        no_answer_fp = total_no_answer - no_answer_pred_null
+        lines.append("## No-Answer Contract\n")
+        lines.append(f"- No-answer questions: {total_no_answer}")
+        lines.append(f"- Correct null responses (answer=null): {no_answer_pred_null}")
+        lines.append(f"- Hallucinated answers on no-answer rows: {no_answer_fp}")
+        lines.append("")
 
     # ── Per-category breakdown ────────────────────────────────────────
     lines.append("## Scores by Category\n")
@@ -675,9 +825,11 @@ def generate_report(
     # ── Failure analysis ──────────────────────────────────────────────
     lines.append("## Failure Analysis\n")
 
-    # Find worst performers by lowest average across available metrics
+    # Prioritize answerable failures (more informative than no-answer rows).
     scored: list[tuple[int, float, QuestionResult, PredictionRecord]] = []
     for i, (r, p) in enumerate(zip(results, predictions)):
+        if r.ground_truth_answer is None:
+            continue
         vals = [
             v for v in [
                 r.context_precision, r.context_recall,
@@ -689,6 +841,9 @@ def generate_report(
 
     scored.sort(key=lambda x: x[1])
     failures = scored[:3]
+
+    if not failures:
+        lines.append("- No answerable failure cases detected.\n")
 
     for rank, (idx, avg_score, r, p) in enumerate(failures, 1):
         lines.append(f"### Failure Case {rank}\n")
@@ -727,6 +882,42 @@ def generate_report(
 
         lines.append("")
 
+    # Secondary summary for no-answer behavior.
+    if no_answer_results:
+        total_no_answer = len(no_answer_results)
+        true_negatives = sum(1 for r in no_answer_results if r.predicted_answer is None)
+        false_positives = total_no_answer - true_negatives
+        lines.append("### No-Answer Behavior Summary\n")
+        lines.append(f"- True negatives (correct null): {true_negatives}/{total_no_answer}")
+        lines.append(f"- False positives (hallucinated answer): {false_positives}/{total_no_answer}")
+        lines.append("")
+
+    # ── Correctness score distribution ───────────────────────────────
+    answerable_correctness = [
+        r.answer_correctness for r in answerable_results
+        if r.answer_correctness is not None
+    ]
+    if answerable_correctness:
+        rounded = [round(v, 2) for v in answerable_correctness]
+        unique_vals = sorted(set(rounded))
+        lines.append("## Correctness Score Distribution\n")
+        lines.append(
+            f"- Distinct answer-correctness values (answerable rows): "
+            f"{', '.join(f'{v:.2f}' for v in unique_vals)}"
+        )
+        lines.append(
+            f"- Min/Median/Max: {min(answerable_correctness):.4f} / "
+            f"{sorted(answerable_correctness)[len(answerable_correctness)//2]:.4f} / "
+            f"{max(answerable_correctness):.4f}"
+        )
+        if len(unique_vals) <= 3:
+            lines.append(
+                "- Low variance warning: judge scores are coarse-grained. "
+                "Current pipeline blends DeepEval GEval with lexical F1 to "
+                "reduce flat 0.7/0.8 plateaus."
+            )
+        lines.append("")
+
     # ── Metric artifact explanations ──────────────────────────────────
     lines.append("## Metric Interpretation Notes\n")
     lines.append(
@@ -748,10 +939,16 @@ def generate_report(
         "and 0.0 correctness for answerable questions. This is expected "
         "and reflects the retrieval-only baseline.\n"
     )
+    lines.append(
+        "- **Why correctness looked flat (0.7/0.8):** "
+        "DeepEval GEval alone can emit coarse bins. This runner now blends "
+        "GEval with lexical F1 (75/25) to preserve judge behavior while "
+        "improving discrimination across answerable questions.\n"
+    )
     if not llm_enabled:
         lines.append(
             "> ⚠️  **LLM was disabled for this run.** Judge metrics were "
-            "skipped. Set `GROQ_API_KEY` and re-run to get full evaluation.\n"
+            "skipped. Set `MISTRAL_API_KEY` and re-run to get full evaluation.\n"
         )
     lines.append("")
 
@@ -767,23 +964,21 @@ def generate_report(
         "smaller chunk sizes (400-500 chars) may improve retrieval precision "
         "for factual questions.\n"
     )
-    lines.append("### 2. Add Hybrid Retrieval (BM25 + Vector)\n")
+    lines.append("### 2. Tune Multi-Hop Retrieval (Expansion + Rerank)\n")
     lines.append(
-        "Pure vector search can miss keyword-specific matches (e.g., exact "
-        "metric names, API operation names). Adding a BM25 sparse retrieval "
-        "layer and combining scores with reciprocal rank fusion would improve "
-        "context recall, especially for factual and paraphrase questions that "
-        "rely on specific terminology. ChromaDB supports metadata filtering "
-        "which could also help with targeted retrieval.\n"
+        "The weakest category is multi-hop. Improve query decomposition, "
+        "run retrieval for each sub-question, and apply an explicit "
+        "cross-encoder reranker over fused candidates. This raises precision "
+        "by filtering chunks that match only one side of a compositional query.\n"
     )
 
     if metrics_source == "heuristic":
         lines.append("### 3. Enable Judge Metrics\n")
         lines.append(
             "This report was generated with heuristic-only metrics. "
-            "Ensure `langchain-groq` and `deepeval` are installed on the "
-            "host running `run_eval.py`, set `GROQ_API_KEY`, and verify "
-            "the API container also has `GROQ_API_KEY` so the LLM can "
+            "Ensure `langchain-openai` and `deepeval` are installed on the "
+            "host running `run_eval.py`, set `MISTRAL_API_KEY`, and verify "
+            "the API container also has `MISTRAL_API_KEY` so the LLM can "
             "generate real answers.\n"
         )
 
@@ -811,8 +1006,12 @@ def main() -> None:
         help="Directory for output artifacts",
     )
     parser.add_argument(
+        "--top-k", type=int, default=4,
+        help="top_k sent to POST /query during evaluation (default: 4)",
+    )
+    parser.add_argument(
         "--require-llm", action="store_true", default=False,
-        help="Fail fast if the Groq LLM is not operational",
+        help="Fail fast if the Mistral LLM is not operational",
     )
     args = parser.parse_args()
 
@@ -825,7 +1024,9 @@ def main() -> None:
     logger.info("Preflight: checking API at %s ...", api_url)
     try:
         with httpx.Client() as hc:
-            health_resp = hc.get(f"{api_url}/health", timeout=10.0)
+            # /health can be slow when Mistral is rate-limited because readiness
+            # probe retries upstream requests before responding.
+            health_resp = hc.get(f"{api_url}/health", timeout=120.0)
             health_resp.raise_for_status()
             health_data = health_resp.json()
     except Exception as exc:
@@ -866,19 +1067,19 @@ def main() -> None:
 
     # ── 0c. Detect judge mode ────────────────────────────────────────
     #  Judge mode requires BOTH:
-    #    1. GROQ_API_KEY on the host (for RAGAS / DeepEval to call Groq)
+    #    1. MISTRAL_API_KEY on the host (for RAGAS / DeepEval to call Mistral)
     #    2. Container LLM ready (so /query returns real answers to evaluate)
-    host_groq_key = detect_judge_mode()
-    judge_mode = host_groq_key and llm_enabled
-    if host_groq_key and not llm_enabled:
-        logger.warning("GROQ_API_KEY is set on host, but container LLM is NOT ready — "
+    host_mistral_key = detect_judge_mode()
+    judge_mode = host_mistral_key and llm_enabled
+    if host_mistral_key and not llm_enabled:
+        logger.warning("MISTRAL_API_KEY is set on host, but container LLM is NOT ready — "
                        "judge metrics will be SKIPPED (no real answers to judge)")
 
     # 1. Load dataset
     records = load_dataset(args.dataset)
 
     # 2. Collect predictions from API
-    predictions = collect_predictions(records, api_url)
+    predictions = collect_predictions(records, api_url, top_k=max(1, args.top_k))
 
     # ── 2a. Normalize refusal strings ("insufficient context" etc.) to null
     predictions = _normalize_predictions(predictions)
@@ -898,7 +1099,7 @@ def main() -> None:
         logger.warning(
             "⚠️  ALL %d answerable questions returned null. "
             "The container likely cannot generate LLM answers. "
-            "Check: container GROQ_API_KEY, retrieval scores, no-answer threshold.",
+            "Check: container MISTRAL_API_KEY, retrieval scores, no-answer threshold.",
             answerable,
         )
 
@@ -923,7 +1124,7 @@ def main() -> None:
     if judge_mode and metrics_source == "heuristic":
         logger.warning(
             "⚠️  Judge mode was enabled but ALL judge frameworks failed. "
-            "Report will say heuristic-only. Check that langchain-groq "
+            "Report will say heuristic-only. Check that langchain-openai "
             "and deepeval are installed on the HOST."
         )
 

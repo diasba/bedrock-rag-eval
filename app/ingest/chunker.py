@@ -19,6 +19,26 @@ class Chunk:
     content_type: str
 
 
+def _snap_chunk_end(text: str, start: int, target_end: int) -> int:
+    """Snap chunk end near a natural boundary while preserving fixed-size behavior."""
+    n = len(text)
+    target_end = min(max(target_end, start + 1), n)
+    if target_end >= n:
+        return n
+
+    window_back = 120
+    window_forward = 80
+    lower = max(start + 1, target_end - window_back)
+    upper = min(n, target_end + window_forward)
+
+    # Prefer paragraph/sentence boundaries.
+    for marker in ("\n\n", "\n", ". ", "? ", "! ", "; "):
+        pos = text.rfind(marker, lower, upper)
+        if pos != -1 and pos > start + 80:
+            return min(pos + len(marker), n)
+    return target_end
+
+
 def chunk_text(
     text: str,
     doc_id: str,
@@ -38,9 +58,19 @@ def chunk_text(
     start = 0
     idx = 0
 
-    while start < len(text):
-        end = start + chunk_size
-        segment = text[start:end]
+    stride = max(1, chunk_size - chunk_overlap)
+    n = len(text)
+
+    while start < n:
+        target_end = min(start + chunk_size, n)
+        end = _snap_chunk_end(text, start, target_end)
+        if end <= start:
+            end = min(start + chunk_size, n)
+
+        segment = text[start:end].strip()
+        if not segment:
+            start += stride
+            continue
 
         chunk_id = f"{doc_id}#{idx:05d}"
         chunks.append(
@@ -54,6 +84,12 @@ def chunk_text(
             )
         )
         idx += 1
-        start += chunk_size - chunk_overlap
+
+        if end >= n:
+            break
+        next_start = max(end - chunk_overlap, start + 1)
+        if next_start <= start:
+            next_start = start + stride
+        start = next_start
 
     return chunks

@@ -33,12 +33,27 @@ TOP_K: int = int(os.getenv("TOP_K", "4"))
 MAX_CHUNKS_PER_DOC: int = int(os.getenv("MAX_CHUNKS_PER_DOC", "2"))
 NO_ANSWER_MIN_SCORE: float = float(os.getenv("NO_ANSWER_MIN_SCORE", "0.3"))
 
-# ── LLM (Groq) ────────────────────────────────────────────────────────
-GROQ_API_KEY: str = os.getenv("GROQ_API_KEY", "")
-GROQ_MODEL: str = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
-GROQ_TEMPERATURE: float = float(os.getenv("GROQ_TEMPERATURE", "0.0"))
-GROQ_FALLBACK_MODELS: list[str] = [
+# ── LLM (Mistral) ─────────────────────────────────────────────────────
+MISTRAL_API_KEY: str = os.getenv("MISTRAL_API_KEY", "")
+MISTRAL_MODEL: str = os.getenv("MISTRAL_MODEL", "mistral-large-latest")
+MISTRAL_TEMPERATURE: float = float(os.getenv("MISTRAL_TEMPERATURE", "0.0"))
+MISTRAL_FALLBACK_MODELS: list[str] = [
     model.strip()
-    for model in os.getenv("GROQ_FALLBACK_MODELS", "llama-3.1-8b-instant").split(",")
+    for model in os.getenv("MISTRAL_FALLBACK_MODELS", "mistral-small-latest").split(",")
     if model.strip()
 ]
+
+# ── Hybrid Retrieval ───────────────────────────────────────────────────
+HYBRID_ENABLED: bool = os.getenv("HYBRID_ENABLED", "true").lower() in ("true", "1", "yes")
+HYBRID_VECTOR_WEIGHT: float = float(os.getenv("HYBRID_VECTOR_WEIGHT", "0.7"))
+HYBRID_KEYWORD_WEIGHT: float = float(os.getenv("HYBRID_KEYWORD_WEIGHT", "0.3"))
+
+# ── Reranking ──────────────────────────────────────────────────────────
+RERANK_ENABLED: bool = os.getenv("RERANK_ENABLED", "false").lower() in ("true", "1", "yes")
+RERANK_PROVIDER: str = os.getenv("RERANK_PROVIDER", "local")  # "local" | "cohere"
+COHERE_API_KEY: str = os.getenv("COHERE_API_KEY", "")
+RERANK_MODEL: str = os.getenv("RERANK_MODEL", "cross-encoder/ms-marco-MiniLM-L-6-v2")
+
+# ── Query Cache ────────────────────────────────────────────────────────
+QUERY_CACHE_ENABLED: bool = os.getenv("QUERY_CACHE_ENABLED", "true").lower() in ("true", "1", "yes")
+QUERY_CACHE_TTL_SEC: int = int(os.getenv("QUERY_CACHE_TTL_SEC", "300"))
