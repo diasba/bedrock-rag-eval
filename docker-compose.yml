@@ -1,0 +1,21 @@
+services:
+  rag-api:
+    build: .
+    ports:
+      - "8000:8000"
+    volumes:
+      - chroma-data:/app/chroma
+      - ./data:/app/data:ro
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      - CHROMA_DIR=/app/chroma
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+volumes:
+  chroma-data:
