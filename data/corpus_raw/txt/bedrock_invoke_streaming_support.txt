@@ -1,0 +1,11 @@
+TITLE: Streaming support in Amazon Bedrock Runtime APIs
+SOURCE: https://docs.aws.amazon.com/bedrock/latest/APIReference/API_runtime_InvokeModel.html
+
+Some Amazon Bedrock Runtime API operations support response streaming. In the API documentation, the field
+"responseStreamingSupported" indicates whether a specific model supports response streaming.
+
+Relevant operations for streaming include:
+- ConverseStream
+- InvokeModelWithResponseStream
+
+If streaming is not supported by a model, you must use non-streaming operations such as Converse or InvokeModel.

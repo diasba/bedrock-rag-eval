@@ -37,3 +37,8 @@ NO_ANSWER_MIN_SCORE: float = float(os.getenv("NO_ANSWER_MIN_SCORE", "0.3"))
 GROQ_API_KEY: str = os.getenv("GROQ_API_KEY", "")
 GROQ_MODEL: str = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
 GROQ_TEMPERATURE: float = float(os.getenv("GROQ_TEMPERATURE", "0.0"))
+GROQ_FALLBACK_MODELS: list[str] = [
+    model.strip()
+    for model in os.getenv("GROQ_FALLBACK_MODELS", "llama-3.1-8b-instant").split(",")
+    if model.strip()
+]
