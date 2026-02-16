@@ -874,3 +874,238 @@ def test_ui_endpoint_returns_html(client: TestClient):
     assert resp.status_code == 200
     assert "text/html" in resp.headers["content-type"]
     assert "Bedrock RAG" in resp.text
+
+
+# ── Tests: multi-hop intent extraction ─────────────────────────────────
+
+def test_multihop_intent_extraction_model_access_and_regions():
+    """Multi-hop Q9: 'model access and supported regions' → 2 intents."""
+    from app.retrieval.multihop import extract_intents
+
+    question = "How do model access and supported regions together affect deployment planning in Bedrock?"
+    intents = extract_intents(question)
+    assert len(intents) >= 2, f"Expected ≥2 intents, got {len(intents)}"
+    all_terms = set()
+    for intent in intents:
+        all_terms |= intent.key_terms
+    assert "model" in all_terms or "access" in all_terms
+    assert "supported" in all_terms or "regions" in all_terms
+
+
+def test_multihop_intent_extraction_chunking_and_retrieval():
+    """Multi-hop Q10: 'chunking settings and retrieval configuration' → 2 intents."""
+    from app.retrieval.multihop import extract_intents
+
+    question = "Why are chunking settings and retrieval configuration both important for answer quality?"
+    intents = extract_intents(question)
+    assert len(intents) >= 2, f"Expected ≥2 intents, got {len(intents)}"
+    all_terms = set()
+    for intent in intents:
+        all_terms |= intent.key_terms
+    assert "chunking" in all_terms
+    assert "retrieval" in all_terms
+
+
+def test_multihop_intent_extraction_kb_and_guardrails():
+    """Multi-hop Q11: 'Knowledge Bases and guardrails' → 2 intents."""
+    from app.retrieval.multihop import extract_intents
+
+    question = "How are Knowledge Bases and guardrails complementary in a production assistant?"
+    intents = extract_intents(question)
+    assert len(intents) >= 2, f"Expected ≥2 intents, got {len(intents)}"
+    all_terms = set()
+    for intent in intents:
+        all_terms |= intent.key_terms
+    assert "knowledge" in all_terms or "bases" in all_terms
+    assert "guardrails" in all_terms
+
+
+def test_multihop_intent_extraction_quotas_and_endpoints():
+    """Multi-hop Q12: 'quotas and endpoints' → 2 intents."""
+    from app.retrieval.multihop import extract_intents
+
+    question = "How do quotas and endpoints influence runtime behavior for inference calls?"
+    intents = extract_intents(question)
+    assert len(intents) >= 2, f"Expected ≥2 intents, got {len(intents)}"
+    all_terms = set()
+    for intent in intents:
+        all_terms |= intent.key_terms
+    assert "quotas" in all_terms
+    assert "endpoints" in all_terms
+
+
+def test_multihop_non_compositional_question_returns_empty():
+    """A simple factual question must not produce intents."""
+    from app.retrieval.multihop import extract_intents
+
+    question = "What is Amazon Bedrock?"
+    intents = extract_intents(question)
+    assert intents == [], f"Expected no intents for simple question, got {intents}"
+
+
+# ── Tests: multi-hop coverage selection ────────────────────────────────
+
+def test_multihop_coverage_model_access_and_regions():
+    """Coverage selection must include ≥1 chunk per intent for Q9."""
+    from app.retrieval.multihop import extract_intents, _select_with_coverage
+
+    question = "How do model access and supported regions together affect deployment planning in Bedrock?"
+    intents = extract_intents(question)
+    assert len(intents) >= 2
+
+    chunk_access = _make_retrieved_chunk(
+        text="Before you can use a foundation model in Amazon Bedrock, you must request access to it.",
+        doc_id="md/model-access.md", chunk_id="md/model-access.md#00000", score=0.82,
+    )
+    chunk_regions = _make_retrieved_chunk(
+        text="Not all models are available in every AWS Region. See supported models by Region.",
+        doc_id="md/supported-regions.md", chunk_id="md/supported-regions.md#00000", score=0.78,
+    )
+    chunk_unrelated = _make_retrieved_chunk(
+        text="Amazon Bedrock tracks Invocations and InvocationLatency metrics.",
+        doc_id="txt/metrics.txt", chunk_id="txt/metrics.txt#00000", score=0.90,
+    )
+
+    pool = [chunk_unrelated, chunk_access, chunk_regions]  # unrelated has highest score
+    selected, covered = _select_with_coverage(pool, intents, top_k=4)
+
+    assert all(covered), f"Not all intents covered: {covered}"
+    selected_ids = {c.chunk_id for c in selected}
+    assert chunk_access.chunk_id in selected_ids, "Missing model-access chunk"
+    assert chunk_regions.chunk_id in selected_ids, "Missing regions chunk"
+
+
+def test_multihop_coverage_chunking_and_retrieval():
+    """Coverage selection must include ≥1 chunk per intent for Q10."""
+    from app.retrieval.multihop import extract_intents, _select_with_coverage
+
+    question = "Why are chunking settings and retrieval configuration both important for answer quality?"
+    intents = extract_intents(question)
+    assert len(intents) >= 2
+
+    chunk_chunking = _make_retrieved_chunk(
+        text="Chunking settings define how source documents are split into discrete segments before embedding.",
+        doc_id="md/chunking.md", chunk_id="md/chunking.md#00000", score=0.80,
+    )
+    chunk_retrieval = _make_retrieved_chunk(
+        text="You can configure the maximum number of retrieved results and a minimum confidence threshold.",
+        doc_id="md/retrieval-config.md", chunk_id="md/retrieval-config.md#00000", score=0.75,
+    )
+    chunk_filler = _make_retrieved_chunk(
+        text="Amazon Bedrock is a fully managed service.",
+        doc_id="md/overview.md", chunk_id="md/overview.md#00000", score=0.85,
+    )
+
+    pool = [chunk_filler, chunk_chunking, chunk_retrieval]
+    selected, covered = _select_with_coverage(pool, intents, top_k=4)
+
+    assert all(covered), f"Not all intents covered: {covered}"
+    selected_ids = {c.chunk_id for c in selected}
+    assert chunk_chunking.chunk_id in selected_ids, "Missing chunking chunk"
+    assert chunk_retrieval.chunk_id in selected_ids, "Missing retrieval-config chunk"
+
+
+def test_multihop_coverage_kb_and_guardrails():
+    """Coverage selection must include ≥1 chunk per intent for Q11."""
+    from app.retrieval.multihop import extract_intents, _select_with_coverage
+
+    question = "How are Knowledge Bases and guardrails complementary in a production assistant?"
+    intents = extract_intents(question)
+    assert len(intents) >= 2
+
+    chunk_kb = _make_retrieved_chunk(
+        text="With knowledge bases, you can give foundation models contextual information from your private data sources for RAG.",
+        doc_id="md/knowledge-bases.md", chunk_id="md/knowledge-bases.md#00000", score=0.80,
+    )
+    chunk_guardrails = _make_retrieved_chunk(
+        text="Guardrails for Amazon Bedrock evaluates user inputs and model responses based on content filters and sensitive information filters.",
+        doc_id="md/guardrails.md", chunk_id="md/guardrails.md#00000", score=0.78,
+    )
+    chunk_filler = _make_retrieved_chunk(
+        text="Amazon Bedrock provides several runtime metrics for monitoring.",
+        doc_id="md/metrics.md", chunk_id="md/metrics.md#00000", score=0.85,
+    )
+
+    pool = [chunk_filler, chunk_kb, chunk_guardrails]
+    selected, covered = _select_with_coverage(pool, intents, top_k=4)
+
+    assert all(covered), f"Not all intents covered: {covered}"
+    selected_ids = {c.chunk_id for c in selected}
+    assert chunk_kb.chunk_id in selected_ids, "Missing knowledge-bases chunk"
+    assert chunk_guardrails.chunk_id in selected_ids, "Missing guardrails chunk"
+
+
+def test_multihop_coverage_quotas_and_endpoints():
+    """Coverage selection must include ≥1 chunk per intent for Q12."""
+    from app.retrieval.multihop import extract_intents, _select_with_coverage
+
+    question = "How do quotas and endpoints influence runtime behavior for inference calls?"
+    intents = extract_intents(question)
+    assert len(intents) >= 2
+
+    chunk_quotas = _make_retrieved_chunk(
+        text="Amazon Bedrock has quotas for the maximum number of API requests per second per model per Region.",
+        doc_id="md/quotas.md", chunk_id="md/quotas.md#00000", score=0.80,
+    )
+    chunk_endpoints = _make_retrieved_chunk(
+        text="The runtime endpoint bedrock-runtime.region.amazonaws.com is used for inference calls like InvokeModel.",
+        doc_id="md/endpoints.md", chunk_id="md/endpoints.md#00000", score=0.75,
+    )
+    chunk_filler = _make_retrieved_chunk(
+        text="Amazon Bedrock is a fully managed service for foundation models.",
+        doc_id="md/overview.md", chunk_id="md/overview.md#00000", score=0.88,
+    )
+
+    pool = [chunk_filler, chunk_quotas, chunk_endpoints]
+    selected, covered = _select_with_coverage(pool, intents, top_k=4)
+
+    assert all(covered), f"Not all intents covered: {covered}"
+    selected_ids = {c.chunk_id for c in selected}
+    assert chunk_quotas.chunk_id in selected_ids, "Missing quotas chunk"
+    assert chunk_endpoints.chunk_id in selected_ids, "Missing endpoints chunk"
+
+
+# ── Test: multi-hop null guard ─────────────────────────────────────────
+
+def test_multihop_null_guard_overrides_refusal(client: TestClient):
+    """When multi-hop intents are covered, LLM refusal should be overridden."""
+    from app.retrieval.multihop import extract_intents, _select_with_coverage
+
+    question = "How are Knowledge Bases and guardrails complementary in a production assistant?"
+
+    chunk_kb = _make_retrieved_chunk(
+        text="With knowledge bases, you can give foundation models contextual information from your private data sources for RAG.",
+        doc_id="md/knowledge-bases.md", chunk_id="md/knowledge-bases.md#00000", score=0.80,
+    )
+    chunk_guardrails = _make_retrieved_chunk(
+        text="Guardrails for Amazon Bedrock evaluates user inputs and model responses based on content filters.",
+        doc_id="md/guardrails.md", chunk_id="md/guardrails.md#00000", score=0.78,
+    )
+    chunks = [chunk_kb, chunk_guardrails]
+
+    from app.generation.llm import GeneratedAnswer
+
+    gen_result = GeneratedAnswer(
+        answer="I don't know based on the provided documents.",
+        citations=[],
+    )
+
+    with (
+        patch("app.main.query_chunks", return_value=chunks),
+        patch("app.main.generate_answer", return_value=gen_result),
+        patch("app.main.extract_intents") as mock_intents,
+        patch("app.main.retrieve_multihop") as mock_retrieve,
+    ):
+        intents = extract_intents(question)
+        mock_intents.return_value = intents
+        mock_retrieve.return_value = (chunks, [True, True])
+
+        resp = client.post(
+            "/query",
+            json={"question": question, "include_context": True},
+        )
+
+    data = resp.json()
+    # The null guard should override the refusal — answer must NOT be None
+    assert data["answer"] is not None, "Multi-hop null guard failed: answer is still None"
+    assert data["citations"] != []

@@ -15,8 +15,8 @@ from starlette.responses import FileResponse, StreamingResponse
 
 from app.config import (
     CHUNK_OVERLAP, CHUNK_SIZE, HYBRID_ENABLED, MAX_CHUNKS_PER_DOC,
-    MIN_DOC_LENGTH, QUERY_CACHE_ENABLED, QUERY_CACHE_TTL_SEC,
-    RERANK_ENABLED, TOP_K,
+    MIN_DOC_LENGTH, MULTIHOP_POOL_SIZE, MULTIHOP_TOP_K, QUERY_CACHE_ENABLED,
+    QUERY_CACHE_TTL_SEC, RERANK_ENABLED, RERANK_POOL_SIZE, TOP_K,
 )
 from app.db.chroma import RetrievedChunk, get_collection, heartbeat, query_chunks, upsert_chunks
 from app.generation.llm import (
@@ -30,6 +30,7 @@ from app.retrieval.hybrid import (
     expand_query_variants, fuse_bm25_runs, fuse_vector_runs, get_bm25_index,
     hybrid_merge, rebuild_bm25_index, select_multi_hop_contexts,
 )
+from app.retrieval.multihop import extract_intents, retrieve_multihop
 from app.retrieval.reranker import rerank_chunks
 
 logging.basicConfig(
@@ -268,56 +269,76 @@ def query(body: QueryRequest) -> QueryResponse:
             logger.info("Cache HIT for: %s", body.question[:60])
             return QueryResponse(**{**cached, "cache_hit": True})
 
-    # 1. Expand query variants (for multi-hop prompts) ─────────────────
-    query_variants = expand_query_variants(body.question)
-    if not query_variants:
-        return QueryResponse(answer=None, citations=[])
+    # 1. Multi-hop intent extraction ───────────────────────────────────
+    intents = extract_intents(body.question)
+    is_multihop_query = bool(intents)
+    intent_covered: list[bool] = []
 
-    is_multi_variant = len(query_variants) > 1
-    candidate_top_k = max(body.top_k * (3 if is_multi_variant else 1), body.top_k)
-    per_doc_limit = 1 if is_multi_variant else MAX_CHUNKS_PER_DOC
-
-    # 2. Dense retrieval for each variant, then fuse with RRF + lexical scoring
-    dense_runs: list[list[RetrievedChunk]] = []
-    dense_fetch_k = max(body.top_k * (3 if is_multi_variant else 1), body.top_k)
-    for variant in query_variants:
-        embedding = embed_texts([variant])[0]
-        dense_runs.append(
-            query_chunks(embedding, top_k=dense_fetch_k, question=variant),
+    if is_multihop_query:
+        # ── Multi-hop pipeline: per-intent retrieval + coverage ───
+        retrieved, intent_covered = retrieve_multihop(
+            body.question, intents,
+            pool_size=MULTIHOP_POOL_SIZE,
+            top_k=MULTIHOP_TOP_K,
         )
+        logger.info(
+            "Multi-hop retrieval: %d intents, coverage=%s, %d chunks",
+            len(intents), intent_covered, len(retrieved),
+        )
+    else:
+        # ── Standard retrieval pipeline ───────────────────────────
+        query_variants = expand_query_variants(body.question)
+        if not query_variants:
+            return QueryResponse(answer=None, citations=[])
 
-    retrieved = fuse_vector_runs(
-        body.question,
-        dense_runs,
-        top_k=candidate_top_k,
-        max_per_doc=per_doc_limit,
-    )
+        is_multi_variant = len(query_variants) > 1
+        # When reranking is on, widen the candidate pool so the
+        # cross-encoder can pick the best top_k from a larger set.
+        if RERANK_ENABLED:
+            dense_fetch_k = max(RERANK_POOL_SIZE, body.top_k * (3 if is_multi_variant else 1))
+        else:
+            dense_fetch_k = max(body.top_k * (3 if is_multi_variant else 1), body.top_k)
+        candidate_top_k = dense_fetch_k
+        per_doc_limit = 1 if is_multi_variant else MAX_CHUNKS_PER_DOC
 
-    # 2b. Hybrid merge (BM25 + dense), fused over query variants ──────
-    if HYBRID_ENABLED:
-        bm25_idx = get_bm25_index()
-        if bm25_idx.ready:
-            bm25_runs = [
-                bm25_idx.query(variant, top_k=dense_fetch_k * 2)
-                for variant in query_variants
-            ]
-            bm25_hits = fuse_bm25_runs(bm25_runs, top_k=dense_fetch_k * 3)
-            retrieved = hybrid_merge(
-                retrieved,
-                bm25_hits,
-                bm25_idx,
-                top_k=candidate_top_k,
-                max_per_doc=per_doc_limit,
+        dense_runs: list[list[RetrievedChunk]] = []
+        for variant in query_variants:
+            embedding = embed_texts([variant])[0]
+            dense_runs.append(
+                query_chunks(embedding, top_k=dense_fetch_k, question=variant),
             )
 
-    # 2c. Optional model-based rerank ──────────────────────────────────
-    if RERANK_ENABLED and len(retrieved) > 1:
-        retrieved = rerank_chunks(body.question, retrieved, top_k=body.top_k)
+        retrieved = fuse_vector_runs(
+            body.question,
+            dense_runs,
+            top_k=candidate_top_k,
+            max_per_doc=per_doc_limit,
+        )
 
-    if is_multi_variant:
-        retrieved = select_multi_hop_contexts(body.question, retrieved, top_k=body.top_k)
-    else:
-        retrieved = retrieved[: body.top_k]
+        if HYBRID_ENABLED:
+            bm25_idx = get_bm25_index()
+            if bm25_idx.ready:
+                bm25_runs = [
+                    bm25_idx.query(variant, top_k=dense_fetch_k * 2)
+                    for variant in query_variants
+                ]
+                bm25_hits = fuse_bm25_runs(bm25_runs, top_k=dense_fetch_k * 3)
+                retrieved = hybrid_merge(
+                    retrieved,
+                    bm25_hits,
+                    bm25_idx,
+                    top_k=candidate_top_k,
+                    max_per_doc=per_doc_limit,
+                )
+
+        if RERANK_ENABLED and len(retrieved) > 1:
+            retrieved = rerank_chunks(body.question, retrieved, top_k=body.top_k)
+
+        if is_multi_variant:
+            retrieved = select_multi_hop_contexts(body.question, retrieved, top_k=body.top_k)
+        else:
+            retrieved = retrieved[: body.top_k]
+
     retrieved_count = len(retrieved)
     max_score = max((chunk.score for chunk in retrieved), default=None)
     token_overlap = _question_context_overlap(body.question, retrieved)
@@ -353,7 +374,17 @@ def query(body: QueryRequest) -> QueryResponse:
 
     # 6. Normalize explicit "can't answer from provided docs" outputs.
     if _is_no_answer_output(result.answer):
-        if _is_low_confidence(max_score, token_overlap):
+        accept_refusal = _is_low_confidence(max_score, token_overlap)
+
+        # Multi-hop null guard: if all intents are covered, override refusal
+        if accept_refusal and is_multihop_query and intent_covered and all(intent_covered):
+            logger.info(
+                "Multi-hop null guard: all %d intents covered, overriding refusal",
+                len(intents),
+            )
+            accept_refusal = False
+
+        if accept_refusal:
             return QueryResponse(
                 answer=None,
                 citations=[],
@@ -531,52 +562,64 @@ def query_stream(body: QueryRequest):
                 return
 
         # 1. Retrieve ─────────────────────────────────────────────
-        query_variants = expand_query_variants(body.question)
-        if not query_variants:
-            yield _sse_event("done", {"answer": None, "citations": []})
-            return
-        is_multi_variant = len(query_variants) > 1
-        candidate_top_k = max(body.top_k * (3 if is_multi_variant else 1), body.top_k)
-        per_doc_limit = 1 if is_multi_variant else MAX_CHUNKS_PER_DOC
-        dense_fetch_k = max(body.top_k * (3 if is_multi_variant else 1), body.top_k)
+        intents = extract_intents(body.question)
 
-        dense_runs: list[list[RetrievedChunk]] = []
-        for variant in query_variants:
-            embedding = embed_texts([variant])[0]
-            dense_runs.append(
-                query_chunks(embedding, top_k=dense_fetch_k, question=variant),
+        if intents:
+            # ── Multi-hop pipeline ───────────────────────────────
+            retrieved, _ = retrieve_multihop(
+                body.question, intents,
+                pool_size=MULTIHOP_POOL_SIZE,
+                top_k=MULTIHOP_TOP_K,
             )
-        retrieved = fuse_vector_runs(
-            body.question,
-            dense_runs,
-            top_k=candidate_top_k,
-            max_per_doc=per_doc_limit,
-        )
-
-        # 2. Hybrid merge ─────────────────────────────────────────
-        if HYBRID_ENABLED:
-            bm25_idx = get_bm25_index()
-            if bm25_idx.ready:
-                bm25_runs = [
-                    bm25_idx.query(variant, top_k=dense_fetch_k * 2)
-                    for variant in query_variants
-                ]
-                bm25_hits = fuse_bm25_runs(bm25_runs, top_k=dense_fetch_k * 3)
-                retrieved = hybrid_merge(
-                    retrieved,
-                    bm25_hits,
-                    bm25_idx,
-                    top_k=candidate_top_k,
-                    max_per_doc=per_doc_limit,
-                )
-
-        # 3. Rerank ───────────────────────────────────────────────
-        if RERANK_ENABLED and len(retrieved) > 1:
-            retrieved = rerank_chunks(body.question, retrieved, top_k=body.top_k)
-        if is_multi_variant:
-            retrieved = select_multi_hop_contexts(body.question, retrieved, top_k=body.top_k)
         else:
-            retrieved = retrieved[: body.top_k]
+            # ── Standard pipeline ────────────────────────────────
+            query_variants = expand_query_variants(body.question)
+            if not query_variants:
+                yield _sse_event("done", {"answer": None, "citations": []})
+                return
+            is_multi_variant = len(query_variants) > 1
+            if RERANK_ENABLED:
+                dense_fetch_k = max(RERANK_POOL_SIZE, body.top_k * (3 if is_multi_variant else 1))
+            else:
+                dense_fetch_k = max(body.top_k * (3 if is_multi_variant else 1), body.top_k)
+            candidate_top_k = dense_fetch_k
+            per_doc_limit = 1 if is_multi_variant else MAX_CHUNKS_PER_DOC
+
+            dense_runs: list[list[RetrievedChunk]] = []
+            for variant in query_variants:
+                embedding = embed_texts([variant])[0]
+                dense_runs.append(
+                    query_chunks(embedding, top_k=dense_fetch_k, question=variant),
+                )
+            retrieved = fuse_vector_runs(
+                body.question,
+                dense_runs,
+                top_k=candidate_top_k,
+                max_per_doc=per_doc_limit,
+            )
+
+            if HYBRID_ENABLED:
+                bm25_idx = get_bm25_index()
+                if bm25_idx.ready:
+                    bm25_runs = [
+                        bm25_idx.query(variant, top_k=dense_fetch_k * 2)
+                        for variant in query_variants
+                    ]
+                    bm25_hits = fuse_bm25_runs(bm25_runs, top_k=dense_fetch_k * 3)
+                    retrieved = hybrid_merge(
+                        retrieved,
+                        bm25_hits,
+                        bm25_idx,
+                        top_k=candidate_top_k,
+                        max_per_doc=per_doc_limit,
+                    )
+
+            if RERANK_ENABLED and len(retrieved) > 1:
+                retrieved = rerank_chunks(body.question, retrieved, top_k=body.top_k)
+            if is_multi_variant:
+                retrieved = select_multi_hop_contexts(body.question, retrieved, top_k=body.top_k)
+            else:
+                retrieved = retrieved[: body.top_k]
 
         # 4. No-answer gate (empty retrieval) ─────────────────────
         if not retrieved:

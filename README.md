@@ -297,9 +297,17 @@ These can also be overridden per-ingest via the `chunk_size` and `chunk_overlap`
 
 | Variable | Default | Description |
 |---|---|---|
-| `TOP_K` | `6` | Number of chunks to retrieve per query |
+| `TOP_K` | `4` | Number of chunks to retrieve per query |
 | `MAX_CHUNKS_PER_DOC` | `2` | Max chunks from the same document (diversity) |
-| `NO_ANSWER_MIN_SCORE` | `0.20` | Minimum similarity threshold |
+| `NO_ANSWER_MIN_SCORE` | `0.3` | Minimum similarity threshold |
+
+### Multi-Hop Retrieval
+
+| Variable | Default | Description |
+|---|---|---|
+| `MULTIHOP_POOL_SIZE` | `32` | Candidate pool size before final multi-hop selection |
+| `MULTIHOP_MAX_CHUNKS_PER_DOC` | `1` | Max chunks per document for multi-hop final contexts |
+| `MULTIHOP_MIN_INTENT_MATCHES` | `1` | Minimum intent matches required to keep a chunk in multi-hop pool |
 
 ### Hybrid Retrieval
 
@@ -339,7 +347,7 @@ Reranking reorders retrieved chunks by cross-encoder relevance without changing 
 | `QUERY_CACHE_ENABLED` | `true` | Enable in-memory query result caching |
 | `QUERY_CACHE_TTL_SEC` | `300` | Cache entry time-to-live in seconds |
 
-Cache key is derived from the normalised question text + `top_k`. Repeated identical queries return instantly with `cache_hit: true`. The cache is thread-safe, bounded at 2048 entries, and auto-evicts expired entries. Clear manually via `POST /cache/clear`.
+Cache key is derived from the normalised question text + `top_k` + `include_context`. Repeated identical queries return instantly with `cache_hit: true`. The cache is thread-safe, bounded at 2048 entries, and auto-evicts expired entries. Clear manually via `POST /cache/clear`.
 
 ---
 

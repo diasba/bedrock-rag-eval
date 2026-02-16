@@ -13,6 +13,20 @@ logger = logging.getLogger(__name__)
 SUPPORTED_EXTENSIONS: set[str] = {".txt", ".md", ".pdf"}
 IGNORED_FILENAMES: set[str] = {"urls.txt", "sources.md"}
 
+# Corpus files that add noise without covering any eval-relevant topic.
+# They are excluded at load time to shrink the chunk pool and lift
+# context precision across all question categories.
+IGNORED_STEMS: set[str] = {
+    "prompt-templates-and-examples",
+    "design-a-prompt",
+    "webcrawl-data-source-connector",
+    "prompt-engineering-guidelines",
+    "kb-advanced-parsing",
+    "kb-custom-transformation",
+    "kb-info",
+    "what-is-prompt-engineering",
+}
+
 
 @dataclass
 class LoadedDoc:
@@ -35,7 +49,7 @@ class LoadResult:
 # ── Helpers ────────────────────────────────────────────────────────────
 
 def _normalize(text: str) -> str:
-    """Normalize text while removing obvious navigation boilerplate."""
+    """Normalize text while removing navigation boilerplate and noisy table rows."""
     import re
 
     boilerplate = {
@@ -46,7 +60,16 @@ def _normalize(text: str) -> str:
         "was this page helpful",
         "feedback",
         "learn more",
+        "documentation amazon bedrock",
+        "javascript is disabled or is unavailable in your browser",
     }
+
+    # Regex patterns for noisy corpus artefacts
+    _source_header_re = re.compile(r"^(Source|Fetched[- ]?At)\s*:", re.IGNORECASE)
+    _yes_no_tok_re = re.compile(r"\b(?:Yes|No)\b")
+    _model_id_re = re.compile(
+        r"\b[a-z][a-z0-9]*\.[a-z][a-z0-9]+-[a-z0-9]+-[a-z0-9]+"
+    )
 
     cleaned_lines: list[str] = []
     prev = ""
@@ -60,6 +83,15 @@ def _normalize(text: str) -> str:
         if len(low) < 3 and not any(ch.isdigit() for ch in low):
             continue
         if line == prev:
+            continue
+        # Strip Source: / Fetched-At: download headers
+        if _source_header_re.match(line):
+            continue
+        # Strip region-availability table rows (5+ Yes/No tokens on one line)
+        if len(_yes_no_tok_re.findall(line)) >= 5:
+            continue
+        # Strip detailed model-table rows (model ID + region pattern)
+        if _model_id_re.search(line) and len(line) > 100:
             continue
         cleaned_lines.append(line)
         prev = line
@@ -101,6 +133,11 @@ def load_folder(root: Path, min_doc_length: int = 200) -> LoadResult:
         if path.suffix.lower() not in SUPPORTED_EXTENSIONS:
             continue
         if path.name in IGNORED_FILENAMES:
+            continue
+        # Match noise files by prefix (stems may have hash suffixes)
+        stem_lower = path.stem.lower()
+        if any(stem_lower.startswith(ns) for ns in IGNORED_STEMS):
+            logger.info("Skipping noise file: %s", path.name)
             continue
 
         doc_id = str(path.relative_to(root))

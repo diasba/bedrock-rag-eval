@@ -43,6 +43,13 @@ MISTRAL_FALLBACK_MODELS: list[str] = [
     if model.strip()
 ]
 
+# ── Multi-Hop Retrieval ────────────────────────────────────────────────
+MULTIHOP_POOL_SIZE: int = int(os.getenv("MULTIHOP_POOL_SIZE", "32"))
+MULTIHOP_MAX_CHUNKS_PER_DOC: int = int(os.getenv("MULTIHOP_MAX_CHUNKS_PER_DOC", "1"))
+MULTIHOP_MIN_INTENT_MATCHES: int = int(os.getenv("MULTIHOP_MIN_INTENT_MATCHES", "1"))
+MULTIHOP_TOP_K: int = int(os.getenv("MULTIHOP_TOP_K", "6"))
+MULTIHOP_KEYWORD_BOOST: float = float(os.getenv("MULTIHOP_KEYWORD_BOOST", "0.45"))
+
 # ── Hybrid Retrieval ───────────────────────────────────────────────────
 HYBRID_ENABLED: bool = os.getenv("HYBRID_ENABLED", "true").lower() in ("true", "1", "yes")
 HYBRID_VECTOR_WEIGHT: float = float(os.getenv("HYBRID_VECTOR_WEIGHT", "0.7"))
@@ -53,6 +60,7 @@ RERANK_ENABLED: bool = os.getenv("RERANK_ENABLED", "false").lower() in ("true", 
 RERANK_PROVIDER: str = os.getenv("RERANK_PROVIDER", "local")  # "local" | "cohere"
 COHERE_API_KEY: str = os.getenv("COHERE_API_KEY", "")
 RERANK_MODEL: str = os.getenv("RERANK_MODEL", "cross-encoder/ms-marco-MiniLM-L-6-v2")
+RERANK_POOL_SIZE: int = int(os.getenv("RERANK_POOL_SIZE", "20"))
 
 # ── Query Cache ────────────────────────────────────────────────────────
 QUERY_CACHE_ENABLED: bool = os.getenv("QUERY_CACHE_ENABLED", "true").lower() in ("true", "1", "yes")
