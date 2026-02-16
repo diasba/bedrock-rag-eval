@@ -24,8 +24,7 @@ To reflect a real-world scenario, I used a mixed corpus of PDF, TXT, and HTML do
 | Metrics (Context Precision/Recall, Faithfulness, Relevancy, Correctness) via RAGAS + DeepEval | Done | `scripts/run_eval.py` |
 | Evaluation report with aggregate + per-question + failure analysis + improvements | Done | `reports/eval_report.md` |
 | README with architecture, setup, tradeoffs, limitations, improvements | Done | this file |
-
-Note: the **agentic research endpoint** is not included (extra credit scope).
+| Agentic research endpoint (extra credit) | Done | `POST /agent/research`, `app/agent/research.py` |
 
 ---
 
@@ -75,10 +74,12 @@ app/
   db/chroma.py            Chroma persistence + retrieval helpers
   retrieval/              hybrid retrieval, rerank, multihop, cache
   generation/llm.py       Mistral prompting + citation extraction
+  agent/research.py       auto-research agent (sub-question → RAG → synthesis)
 scripts/
   run_eval.py             end-to-end evaluation runner
   smoke_ingest.sh         ingestion smoke script
   smoke_query.sh          query smoke script
+  smoke_agent_research.sh agent research smoke script
 data/
   corpus_raw/             source docs
   eval/eval_dataset.jsonl evaluation dataset (20 rows)
@@ -177,10 +178,55 @@ If the question is not answerable from corpus:
 
 ### Additional endpoints
 
+- `POST /agent/research` (auto-research agent — see below)
 - `POST /query/stream` (SSE streaming)
 - `GET /stats` (collection stats)
 - `POST /cache/clear`
 - `GET /ui` (simple local web UI)
+
+---
+
+## Agentic Research Endpoint (Extra Credit)
+
+`POST /agent/research` autonomously decomposes a broad topic into sub-questions,
+queries the existing RAG pipeline for each, synthesises a structured mini-report,
+and identifies knowledge gaps.
+
+**Request:**
+
+```json
+{
+  "topic": "Amazon Bedrock Knowledge Bases",
+  "max_subquestions": 5
+}
+```
+
+**curl example:**
+
+```bash
+curl -s -X POST http://localhost:8000/agent/research \
+  -H "Content-Type: application/json" \
+  -d '{"topic": "Amazon Bedrock Knowledge Bases", "max_subquestions": 5}' \
+  | python3 -m json.tool
+```
+
+**Response fields:**
+
+| Field | Description |
+|---|---|
+| `topic` | Original research topic |
+| `subquestions` | Auto-generated sub-questions |
+| `findings[]` | Per-sub-question: answer, citations, status (`answered`/`gap`) |
+| `gaps[]` | Sub-questions with no answer or low evidence |
+| `final_summary` | LLM-synthesised summary (deterministic fallback if LLM unavailable) |
+| `stats` | `answered_count`, `gap_count` |
+
+**Design decisions:**
+
+- Sub-questions are template-generated (deterministic, no extra LLM call).
+- Each sub-question reuses the existing `/query` pipeline internally (no HTTP round-trip).
+- Gaps are classified as `no_answer` (null response) or `low_evidence` (answer but no citations).
+- Summary uses LLM synthesis when available, with a deterministic fallback that stitches findings.
 
 ---
 
@@ -258,12 +304,13 @@ python3 scripts/run_eval.py \
 ### Latest aggregate (judge mode)
 
 From `reports/eval_report.md`:
-
-- Context Precision: **0.6111**
-- Context Recall: **0.7028**
-- Faithfulness: **0.8500**
-- Answer Relevancy: **0.6104**
-- Answer Correctness: **0.7061**
+| Metric | Score |
+|---|---|
+| Context Precision | 0.7639 |
+| Context Recall | 0.8160 |
+| Faithfulness | 1.0000 |
+| Answer Relevancy | 0.7631 |
+| Answer Correctness | 0.6326 |
 
 ---
 
@@ -281,7 +328,7 @@ From `reports/eval_report.md`:
 1. Judge metrics can vary run-to-run because they depend on LLM scoring.
 2. Fixed-size chunking with markdown-header splitting can still break mid-paragraph for very dense sections.
 3. Some evaluation rows remain sensitive to retrieval ranking noise (e.g., Q15 runtime-metrics regression).
-4. Agentic research endpoint (extra credit) is not implemented.
+4. Agent sub-question generation is template-based; an LLM-driven decomposition would yield more targeted questions.
 5. BM25 index is rebuilt fully on each ingest; large corpora may cause a brief delay.
 
 ---
@@ -290,7 +337,7 @@ From `reports/eval_report.md`:
 
 1. Add parent-document retrieval: store small chunks for matching but pass the full parent section as context to the LLM.
 2. Add LLM-based query rewriting (HyDE or step-back prompting) for ambiguous or complex questions.
-3. Add a minimal `/research` agent endpoint (sub-question planning + multi-step synthesis).
+3. Upgrade agent sub-question generation from templates to LLM-driven decomposition with follow-up loops.
 4. Add deterministic CI pipeline for regression checks (ingest smoke + eval smoke on every PR).
 
 ---
@@ -317,8 +364,11 @@ docker compose up --build -d
 # Query smoke test
 ./scripts/smoke_query.sh
 
+# Agent research smoke test
+./scripts/smoke_agent_research.sh
+
 # Unit tests
-python3 -m pytest -q tests/test_query.py
+python3 -m pytest -q tests/
 
 # Eval
 python3 scripts/run_eval.py --dataset data/eval/eval_dataset.jsonl --api-url http://localhost:8000 --require-llm
