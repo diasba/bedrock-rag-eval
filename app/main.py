@@ -30,6 +30,7 @@ from app.retrieval.hybrid import (
     expand_query_variants, fuse_bm25_runs, fuse_vector_runs, get_bm25_index,
     hybrid_merge, rebuild_bm25_index, select_multi_hop_contexts,
 )
+from app.retrieval.detection import is_list_style
 from app.retrieval.multihop import extract_intents, retrieve_multihop
 from app.retrieval.reranker import rerank_chunks
 
@@ -292,6 +293,7 @@ def query(body: QueryRequest) -> QueryResponse:
             return QueryResponse(answer=None, citations=[])
 
         is_multi_variant = len(query_variants) > 1
+        is_list_query = is_list_style(body.question)
         # When reranking is on, widen the candidate pool so the
         # cross-encoder can pick the best top_k from a larger set.
         if RERANK_ENABLED:
@@ -300,7 +302,7 @@ def query(body: QueryRequest) -> QueryResponse:
             dense_fetch_k = max(body.top_k * (3 if is_multi_variant else 1), body.top_k)
         candidate_top_k = dense_fetch_k
         base_per_doc_limit = 1 if is_multi_variant else MAX_CHUNKS_PER_DOC
-        per_doc_limit = base_per_doc_limit
+        per_doc_limit = max(base_per_doc_limit, min(body.top_k, 2)) if is_list_query else base_per_doc_limit
 
         dense_runs: list[list[RetrievedChunk]] = []
         for variant in query_variants:
@@ -579,13 +581,14 @@ def query_stream(body: QueryRequest):
                 yield _sse_event("done", {"answer": None, "citations": []})
                 return
             is_multi_variant = len(query_variants) > 1
+            is_list_query = is_list_style(body.question)
             if RERANK_ENABLED:
                 dense_fetch_k = max(RERANK_POOL_SIZE, body.top_k * (3 if is_multi_variant else 1))
             else:
                 dense_fetch_k = max(body.top_k * (3 if is_multi_variant else 1), body.top_k)
             candidate_top_k = dense_fetch_k
             base_per_doc_limit = 1 if is_multi_variant else MAX_CHUNKS_PER_DOC
-            per_doc_limit = base_per_doc_limit
+            per_doc_limit = max(base_per_doc_limit, min(body.top_k, 2)) if is_list_query else base_per_doc_limit
 
             dense_runs: list[list[RetrievedChunk]] = []
             for variant in query_variants:

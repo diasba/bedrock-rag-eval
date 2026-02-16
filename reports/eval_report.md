@@ -1,6 +1,6 @@
 # RAG Evaluation Report
 
-Generated: 2026-02-16 15:44:26
+Generated: 2026-02-16 16:31:17
 
 Dataset: 20 questions
 
@@ -19,21 +19,21 @@ Metrics source: **judge**
 
 | Metric | Score |
 |---|---|
-| Context Precision | 0.6208 |
-| Context Recall | 0.6417 |
-| Faithfulness | 0.8275 |
-| Answer Relevancy | 0.5699 |
-| Answer Correctness | 0.6831 |
+| Context Precision | 0.6319 |
+| Context Recall | 0.6528 |
+| Faithfulness | 0.8500 |
+| Answer Relevancy | 0.6184 |
+| Answer Correctness | 0.7037 |
 
 ## Answerable-Only Scores
 
 | Metric | Score |
 |---|---|
-| Context Precision | 0.7760 |
-| Context Recall | 0.8021 |
-| Faithfulness | 0.9719 |
-| Answer Relevancy | 0.7124 |
-| Answer Correctness | 0.6038 |
+| Context Precision | 0.7899 |
+| Context Recall | 0.8160 |
+| Faithfulness | 1.0000 |
+| Answer Relevancy | 0.7730 |
+| Answer Correctness | 0.6296 |
 
 ## No-Answer Contract
 
@@ -45,21 +45,21 @@ Metrics source: **judge**
 
 ### factual (7 questions)
 
-- Context Precision: 0.9167
-- Context Recall: 0.8571
-- Faithfulness: 0.9357
-- Answer Relevancy: 0.7908
-- Answer Correctness: 0.5972
+- Context Precision: 0.7698
+- Context Recall: 1.0000
+- Faithfulness: 1.0000
+- Answer Relevancy: 0.8852
+- Answer Correctness: 0.6699
 
 ### multi_hop (4 questions)
 
-- Context Precision: 0.6250
+- Context Precision: 0.8750
 - Context Recall: 0.6250
 - Faithfulness: 1.0000
-- Answer Relevancy: 0.7472
-- Answer Correctness: 0.6417
+- Answer Relevancy: 0.7640
+- Answer Correctness: 0.6196
 
-### no_answer (4 questions) (Correct, because answer is not being expected)
+### no_answer (4 questions)
 
 - Context Precision: 0.0000
 - Context Recall: 0.0000
@@ -69,32 +69,32 @@ Metrics source: **judge**
 
 ### paraphrase (5 questions)
 
-- Context Precision: 0.7000
-- Context Recall: 0.8667
+- Context Precision: 0.7500
+- Context Recall: 0.7111
 - Faithfulness: 1.0000
-- Answer Relevancy: 0.5749
-- Answer Correctness: 0.5828
+- Answer Relevancy: 0.6230
+- Answer Correctness: 0.5812
 
 ## Per-Question Breakdown
 
 | # | Question | Category | Ctx Prec | Ctx Rec | Faith | Ans Rel | Ans Corr |
 |---|---|---|---|---|---|---|---|
-| 1 | What is Amazon Bedrock? | factual | 1.00 | 1.00 | 1.00 | 0.93 | 0.62 |
-| 2 | Do you need model access permissions before using … | factual | 0.58 | 1.00 | 1.00 | 0.78 | 0.61 |
-| 3 | Where can you find supported models for Bedrock? | factual | 1.00 | 1.00 | 1.00 | 0.82 | 0.47 |
-| 4 | What is a Bedrock Knowledge Base used for? | factual | 1.00 | 1.00 | 0.80 | 0.79 | 0.68 |
-| 5 | What does chunking do in a knowledge base pipeline… | factual | 0.83 | 0.00 | 0.75 | 0.84 | 0.49 |
-| 6 | What is the purpose of RetrieveAndGenerate? | factual | 1.00 | 1.00 | 1.00 | 0.60 | 0.59 |
-| 7 | What is enabled by default with the correct AWS Ma… | multi_hop | 0.00 | 0.50 | 1.00 | 0.47 | 0.77 |
-| 8 | In fixed-size chunking, what two settings define c… | multi_hop | 0.50 | 1.00 | 1.00 | 0.90 | 0.84 |
+| 1 | What is Amazon Bedrock? | factual | 1.00 | 1.00 | 1.00 | 1.00 | 0.74 |
+| 2 | Do you need model access permissions before using … | factual | 0.81 | 1.00 | 1.00 | 1.00 | 0.69 |
+| 3 | Where can you find supported models for Bedrock? | factual | 1.00 | 1.00 | 1.00 | 0.82 | 0.64 |
+| 4 | What is a Bedrock Knowledge Base used for? | factual | 0.50 | 1.00 | 1.00 | 0.81 | 0.67 |
+| 5 | What does chunking do in a knowledge base pipeline… | factual | 0.75 | 1.00 | 1.00 | 0.98 | 0.63 |
+| 6 | What is the purpose of RetrieveAndGenerate? | factual | 0.83 | 1.00 | 1.00 | 0.79 | 0.60 |
+| 7 | What is enabled by default with the correct AWS Ma… | multi_hop | 1.00 | 0.50 | 1.00 | 0.47 | 0.77 |
+| 8 | In fixed-size chunking, what two settings define c… | multi_hop | 0.50 | 1.00 | 1.00 | 0.91 | 0.84 |
 | 9 | In Amazon Bedrock, which feature searches your dat… | multi_hop | 1.00 | 0.50 | 1.00 | 0.78 | 0.35 |
-| 10 | For Amazon Bedrock inference, which endpoint is us… | multi_hop | 1.00 | 0.50 | 1.00 | 0.83 | 0.61 |
-| 11 | Can Bedrock KB do RAG-style retrieval before gener… | paraphrase | 0.75 | 1.00 | 1.00 | 0.73 | 0.70 |
-| 12 | How do I check token count before sending a prompt… | paraphrase | 1.00 | 1.00 | 1.00 | 0.65 | 0.67 |
-| 13 | Is there an API for streaming model responses? | paraphrase | 0.75 | 1.00 | 1.00 | 0.79 | 0.66 |
-| 14 | Can I directly apply a guardrail through an API ca… | paraphrase | 1.00 | 1.00 | 1.00 | 0.66 | 0.72 |
-| 15 | Name at least 5 runtime invocation metrics Bedrock… | paraphrase | 0.00 | 0.33 | 1.00 | 0.04 | 0.17 |
-| 16 | In Amazon Bedrock inference, which service tier is… | factual | 1.00 | 1.00 | 1.00 | 0.78 | 0.72 |
+| 10 | For Amazon Bedrock inference, which endpoint is us… | multi_hop | 1.00 | 0.50 | 1.00 | 0.89 | 0.52 |
+| 11 | Can Bedrock KB do RAG-style retrieval before gener… | paraphrase | 0.75 | 0.00 | 1.00 | 0.72 | 0.70 |
+| 12 | How do I check token count before sending a prompt… | paraphrase | 1.00 | 1.00 | 1.00 | 0.65 | 0.65 |
+| 13 | Is there an API for streaming model responses? | paraphrase | 1.00 | 1.00 | 1.00 | 0.77 | 0.65 |
+| 14 | Can I directly apply a guardrail through an API ca… | paraphrase | 1.00 | 1.00 | 1.00 | 0.66 | 0.61 |
+| 15 | Name at least 5 runtime invocation metrics Bedrock… | paraphrase | 0.00 | 0.56 | 1.00 | 0.32 | 0.30 |
+| 16 | In Amazon Bedrock inference, which service tier is… | factual | 0.50 | 1.00 | 1.00 | 0.79 | 0.71 |
 | 17 | What is the default PostgreSQL version used intern… | no_answer | 0.00 | 0.00 | 0.00 | 0.00 | 1.00 |
 | 18 | Which color theme does the AWS Bedrock console use… | no_answer | 0.00 | 0.00 | 0.00 | 0.00 | 1.00 |
 | 19 | What salary does an AWS Bedrock product manager ea… | no_answer | 0.00 | 0.00 | 1.00 | 0.00 | 1.00 |
@@ -110,49 +110,50 @@ Metrics source: **judge**
 
 **Ground Truth:** Amazon Bedrock tracks Invocations, InvocationLatency, InvocationClientErrors, InvocationServerErrors, InvocationThrottles, InputTokenCount, OutputTokenCount, LegacyModelInvocations, and OutputImageCount.
 
-**Predicted:** The following table describes runtime invocation metrics provided by Amazon Bedrock.
+**Predicted:** 1. Invocations [Chunk 1]
+2. InvocationLatency [Chunk 1]
+3. InvocationClientErrors [Chunk 1, 3]
+4. InvocationServerErrors [Chunk 3]
+5. InvocationThrottles [Chunk 3]
 
-**Average Score:** 0.3087
+**Average Score:** 0.4353
 
 **Analysis:**
 
 - Low context precision — retrieved chunks were not relevant to this question.
-- Low context recall — the retrieval missed key chunks needed to answer.
 - Low answer relevancy — the generated answer does not address the question directly.
 - Low answer correctness — the predicted answer diverges significantly from ground truth.
 
 ### Failure Case 2
 
-**Question:** What is enabled by default with the correct AWS Marketplace permissions, and which table shows model support by AWS Region?
+**Question:** Can Bedrock KB do RAG-style retrieval before generation?
 
-**Category:** multi_hop
+**Category:** paraphrase
 
-**Ground Truth:** Access to all Amazon Bedrock foundation models is enabled by default with the correct AWS Marketplace permissions. Model support by AWS Region is shown in the model support by AWS Region table.
+**Ground Truth:** Yes, Bedrock Knowledge Bases support RAG-style retrieval before generation through the RetrieveAndGenerate API, which first queries the knowledge base for relevant results and then uses them to augment the prompt for the foundation model.
 
-**Predicted:** Access to all Amazon Bedrock foundation models is enabled by default with the correct AWS Marketplace permissions [Chunk 1]. The table showing inference profile support by AWS Region is found in the "Supported Regions and models for inference profiles" section [Chunk 2].
+**Predicted:** Yes, Amazon Bedrock Knowledge Bases can perform RAG-style retrieval before generation by retrieving relevant information from data sources and using it to improve the accuracy and relevance of generated responses [Chunk 1][Chunk 4].
 
-**Average Score:** 0.5475
-
-**Analysis:**
-
-- Low context precision — retrieved chunks were not relevant to this question.
-- Low answer relevancy — the generated answer does not address the question directly.
-
-### Failure Case 3
-
-**Question:** What does chunking do in a knowledge base pipeline?
-
-**Category:** factual
-
-**Ground Truth:** Chunking splits documents into smaller segments so they can be efficiently embedded and retrieved during a query.
-
-**Predicted:** Chunking splits each document in your data source into smaller subdivisions (chunks) based on token count and other parameters, which are then used to populate the `$search_results$` placeholder in the knowledge base prompt templates [Chunk 3]. This process helps shorten the content filled in the prompt templates, improving retrieval and generation efficiency [Chunk 1][Chunk 2].
-
-**Average Score:** 0.5815
+**Average Score:** 0.6328
 
 **Analysis:**
 
 - Low context recall — the retrieval missed key chunks needed to answer.
+
+### Failure Case 3
+
+**Question:** In Amazon Bedrock, which feature searches your data to answer a query, and which feature evaluates both user inputs and model responses?
+
+**Category:** multi_hop
+
+**Ground Truth:** When a query is made, a knowledge base searches your data to find relevant information to answer the query. Amazon Bedrock Guardrails evaluates both user inputs and model responses.
+
+**Predicted:** The feature that searches your data to answer a query is **Amazon Bedrock Knowledge Bases** [Chunk 1]. The feature that evaluates both retrieval effectiveness from data sources and the quality of generated responses is **Amazon Bedrock RAG evaluations** [Chunk 4].
+
+**Average Score:** 0.7258
+
+**Analysis:**
+
 - Low answer correctness — the predicted answer diverges significantly from ground truth.
 
 ### No-Answer Behavior Summary
@@ -162,8 +163,8 @@ Metrics source: **judge**
 
 ## Correctness Score Distribution
 
-- Distinct answer-correctness values (answerable rows): 0.17, 0.35, 0.47, 0.49, 0.59, 0.61, 0.62, 0.66, 0.67, 0.68, 0.70, 0.72, 0.77, 0.84
-- Min/Median/Max: 0.1708 / 0.6565 / 0.8417
+- Distinct answer-correctness values (answerable rows): 0.30, 0.35, 0.52, 0.60, 0.61, 0.63, 0.64, 0.65, 0.67, 0.69, 0.70, 0.71, 0.74, 0.77, 0.84
+- Min/Median/Max: 0.3000 / 0.6532 / 0.8417
 
 ## Metric Interpretation Notes
 

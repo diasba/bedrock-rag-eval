@@ -14,16 +14,12 @@ from app.config import (
     MAX_CHUNKS_PER_DOC, TOP_K,
 )
 from app.ingest.chunker import Chunk
-from app.retrieval.detection import is_multihop
+from app.retrieval.detection import is_list_style, is_multihop
 
 logger = logging.getLogger(__name__)
 
 _client: chromadb.ClientAPI | None = None
 
-_LIST_STYLE_RE = re.compile(
-    r"\b(list|name|enumerate|at least|what are|which|metrics|fields|types|steps|limits?)\b",
-    re.IGNORECASE,
-)
 _BOILERPLATE_HINTS = (
     "table of contents",
     "was this page helpful",
@@ -179,14 +175,6 @@ def _lexical_overlap_score(question_terms: set[str], text: str) -> float:
     overlap = len(question_terms & _text_terms(text))
     return overlap / len(question_terms)
 
-
-def _is_list_style_query(question: str) -> bool:
-    q = question.strip()
-    if not q:
-        return False
-    return bool(_LIST_STYLE_RE.search(q))
-
-
 def _looks_structured_chunk(text: str) -> bool:
     if not text:
         return False
@@ -213,7 +201,7 @@ def query_chunks(
     # Fetch more than top_k to allow for diversity and filtering.
     fetch_k = max(top_k * 4, 24)
     multi_hop_query = is_multihop(question)
-    list_style_query = _is_list_style_query(question)
+    list_style_query = is_list_style(question)
     if multi_hop_query:
         fetch_k = max(fetch_k, top_k * 10, 60)
     if list_style_query:
