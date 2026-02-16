@@ -35,11 +35,11 @@
     "md_count": 914
   },
   "aggregate": {
-    "context_precision": 0.4255,
-    "context_recall": 0.6212,
-    "faithfulness": 0.7712,
-    "answer_relevancy": 0.6145,
-    "answer_correctness": 0.621
+    "context_precision": 0.6556,
+    "context_recall": 0.775,
+    "faithfulness": 0.8083,
+    "answer_relevancy": 0.5941,
+    "answer_correctness": 0.73
   },
   "per_question": [
     {
@@ -56,12 +56,12 @@
     {
       "question": "Do you need model access permissions before using some Bedrock models?",
       "category": "factual",
-      "predicted_answer": "Yes, you need permissions for `bedrock:InvokeModel` or `bedrock:InvokeModelWithResponseStream` actions to use Bedrock models, and access to third-party models requires programmatic approval [Chunk 1][Chunk 2][Chunk 3][Chunk 4].",
+      "predicted_answer": "Yes, you need permissions for `bedrock:InvokeModel` or `bedrock:InvokeModelWithResponseStream` actions to use Bedrock models, and access to third-party models requires programmatic access management [Chunk 1][Chunk 2][Chunk 3][Chunk 4].",
       "ground_truth_answer": "Yes, you need to request and be granted model access before you can use foundation models in Amazon Bedrock.",
       "context_precision": 0.6389,
       "context_recall": 1.0,
       "faithfulness": 1.0,
-      "answer_relevancy": 0.8917,
+      "answer_relevancy": 0.9002,
       "answer_correctness": 0.468
     },
     {
@@ -78,7 +78,7 @@
     {
       "question": "What is a Bedrock Knowledge Base used for?",
       "category": "factual",
-      "predicted_answer": "A Bedrock Knowledge Base is used to integrate proprietary information into generative-AI applications, enabling Retrieval Augmented Generation (RAG) to improve response relevancy and accuracy by searching and retrieving data from connected data sources [Chunk 1][Chunk 4].",
+      "predicted_answer": "A Bedrock Knowledge Base is used to integrate proprietary information into generative-AI applications via Retrieval Augmented Generation (RAG), improving response relevancy and accuracy by retrieving relevant data from connected data sources [Chunk 1][Chunk 4].",
       "ground_truth_answer": "A Bedrock Knowledge Base is used to give foundation models contextual information from your private data sources for Retrieval Augmented Generation (RAG).",
       "context_precision": 0.75,
       "context_recall": 1.0,
@@ -109,70 +109,48 @@
       "answer_correctness": 0.5675
     },
     {
-      "question": "What two types of RAG evaluation jobs can you set up in Amazon Bedrock evaluations?",
-      "category": "factual",
-      "predicted_answer": "In Amazon Bedrock evaluations, you can set up **automated** and **human** RAG evaluation jobs [Chunk 1].",
-      "ground_truth_answer": "You can set up two types of jobs: retrieve-only and retrieve-and-generate.",
-      "context_precision": 0.0,
+      "question": "What is enabled by default with the correct AWS Marketplace permissions, and which table shows model support by AWS Region?",
+      "category": "multi_hop",
+      "predicted_answer": "Access to all Amazon Bedrock foundation models is enabled by default with the correct AWS Marketplace permissions [Chunk 1]. The table showing model support by AWS Region is found in the \"Models and Regions\" documentation [Chunk 2].",
+      "ground_truth_answer": "Access to all Amazon Bedrock foundation models is enabled by default with the correct AWS Marketplace permissions. Model support by AWS Region is shown in the model support by AWS Region table.",
+      "context_precision": 1.0,
       "context_recall": 1.0,
       "faithfulness": 0.5,
-      "answer_relevancy": 0.8645,
-      "answer_correctness": 0.2426
+      "answer_relevancy": 0.4708,
+      "answer_correctness": 0.7852
     },
     {
-      "question": "What does contextual grounding check in Bedrock Guardrails evaluate?",
-      "category": "factual",
-      "predicted_answer": "Contextual grounding check in Bedrock Guardrails evaluates only the grounding source, query, and response [Chunk 1].",
-      "ground_truth_answer": "It evaluates grounding and relevance of a model response against the provided source and user query.",
-      "context_precision": 0.0,
+      "question": "In fixed-size chunking, what two settings define chunk size and overlap, and in retrievalConfiguration.vectorSearchConfiguration which field sets the maximum number of results?",
+      "category": "multi_hop",
+      "predicted_answer": "In fixed-size chunking, the two settings are the **maximum number of tokens per chunk** and the **overlap percentage** [Chunk 2]. In `retrievalConfiguration.vectorSearchConfiguration`, the **`numberOfResults`** field sets the maximum number of results [Chunk 1].",
+      "ground_truth_answer": "In fixed-size chunking, the two settings are the number of tokens per chunk and the overlap percentage. In retrievalConfiguration.vectorSearchConfiguration, the field that sets the maximum number of results is numberOfResults.",
+      "context_precision": 0.5,
       "context_recall": 1.0,
       "faithfulness": 1.0,
-      "answer_relevancy": 1.0,
-      "answer_correctness": 0.4583
+      "answer_relevancy": 0.8279,
+      "answer_correctness": 0.7667
     },
     {
-      "question": "How do model access and supported regions together affect deployment planning in Bedrock?",
+      "question": "In Amazon Bedrock, which feature searches your data to answer a query, and which feature evaluates both user inputs and model responses?",
       "category": "multi_hop",
-      "predicted_answer": "In Bedrock, you must first request access to a foundation model using its product ID [Chunk 1], then verify the model is supported in your chosen AWS Region (single-region model support) before deploying [Chunk 4].",
-      "ground_truth_answer": "Deployment planning requires checking both model access permissions (which must be requested per model) and supported regions (since not all models are available in all AWS regions), so teams must confirm regional availability before requesting access.",
-      "context_precision": 0.25,
+      "predicted_answer": "Amazon Bedrock Knowledge Bases search your data to answer a query [Chunk 1], while Bedrock Guardrails evaluate both user inputs (prompts) and model responses [Chunk 2].",
+      "ground_truth_answer": "When a query is made, a knowledge base searches your data to find relevant information to answer the query. Amazon Bedrock Guardrails evaluates both user inputs and model responses.",
+      "context_precision": 1.0,
       "context_recall": 1.0,
-      "faithfulness": 0.75,
-      "answer_relevancy": 0.6029,
-      "answer_correctness": 0.6539
+      "faithfulness": 1.0,
+      "answer_relevancy": 0.4362,
+      "answer_correctness": 0.7471
     },
     {
-      "question": "Why are chunking settings and retrieval configuration both important for answer quality?",
+      "question": "For Amazon Bedrock inference, which endpoint is used for InvokeModel calls, and what controls model inference usage?",
       "category": "multi_hop",
-      "predicted_answer": "Chunking settings (e.g., semantic chunking, maximum tokens) improve retrieval accuracy by preserving semantic content and controlling chunk size [Chunk 2], while retrieval configuration (e.g., `numberOfResults`) determines how many relevant chunks are returned to inform the answer [Chunk 1][Chunk 3]. Together, they balance precision and context for higher-quality responses.",
-      "ground_truth_answer": "Chunking controls the granularity of document segments stored in the vector index, while retrieval configuration controls how many chunks are returned and how they are ranked. Together they determine whether the right information at the right level of detail reaches the LLM for generation.",
-      "context_precision": 0.0,
-      "context_recall": 0.0,
-      "faithfulness": 0.75,
-      "answer_relevancy": 0.8171,
-      "answer_correctness": 0.6094
-    },
-    {
-      "question": "How are Knowledge Bases and guardrails complementary in a production assistant?",
-      "category": "multi_hop",
-      "predicted_answer": "Guardrails apply only to the input prompt and LLM-generated response, not to the references retrieved from Knowledge Bases, allowing safe user interactions while leveraging retrieved data [Chunk 2]. Guardrails can be used alongside Knowledge Bases to enforce policies like content filters on the final output [Chunk 3].",
-      "ground_truth_answer": "Knowledge Bases provide the RAG capability to ground answers in private data, while guardrails add safety layers like content filtering and sensitive information masking. Together they enable an assistant that is both accurate and safe.",
-      "context_precision": 0.5,
-      "context_recall": 0.3333,
-      "faithfulness": 0.8,
-      "answer_relevancy": 0.6134,
-      "answer_correctness": 0.5116
-    },
-    {
-      "question": "How do quotas and endpoints influence runtime behavior for inference calls?",
-      "category": "multi_hop",
-      "predicted_answer": null,
-      "ground_truth_answer": "Quotas define the maximum request rate and token limits per model per region. Endpoints determine the network path for API calls. Together, exceeding quotas at a given endpoint leads to throttling (InvocationThrottles), and choosing the right endpoint-region pair is necessary to get sufficient throughput.",
-      "context_precision": 0.0,
-      "context_recall": 0.0,
-      "faithfulness": 0.5,
-      "answer_relevancy": 0.0,
-      "answer_correctness": 0.0
+      "predicted_answer": "Use the region-specific endpoint `bedrock-runtime.{region}.amazonaws.com` for InvokeModel calls [Chunk 1]. Model inference usage is controlled via inference parameters [Chunk 2] and access to service tiers [Chunk 3].",
+      "ground_truth_answer": "InvokeModel calls use the bedrock-runtime.{region}.amazonaws.com endpoint. Model inference in Amazon Bedrock is controlled by quotas on token usage.",
+      "context_precision": 1.0,
+      "context_recall": 0.5,
+      "faithfulness": 0.6667,
+      "answer_relevancy": 0.7689,
+      "answer_correctness": 0.6953
     },
     {
       "question": "Can Bedrock KB do RAG-style retrieval before generation?",
@@ -215,30 +193,30 @@
       "context_precision": 1.0,
       "context_recall": 1.0,
       "faithfulness": 1.0,
-      "answer_relevancy": 0.7899,
+      "answer_relevancy": 0.7878,
       "answer_correctness": 0.7216
     },
     {
-      "question": "What are the runtime metrics Amazon Bedrock tracks for model invocations?",
+      "question": "Name at least 5 runtime invocation metrics Bedrock publishes (CloudWatch)",
       "category": "paraphrase",
-      "predicted_answer": "Amazon Bedrock tracks the following runtime metrics for model invocations: **Invocations** (number of successful requests), **InvocationLatency** (latency in milliseconds), and **InvocationClientErrors** (number of client errors) [Chunk 1].",
+      "predicted_answer": "Amazon Bedrock publishes these runtime invocation metrics: Invocations, InvocationLatency, InvocationClientErrors, InvocationServerErrors, InvocationThrottles, InputTokenCount, OutputTokenCount [Chunk 1][Chunk 2][Chunk 4].",
       "ground_truth_answer": "Amazon Bedrock tracks Invocations, InvocationLatency, InvocationClientErrors, InvocationServerErrors, InvocationThrottles, InputTokenCount, OutputTokenCount, LegacyModelInvocations, and OutputImageCount.",
       "context_precision": 0.0,
-      "context_recall": 0.3333,
+      "context_recall": 1.0,
       "faithfulness": 1.0,
-      "answer_relevancy": 0.92,
-      "answer_correctness": 0.3526
+      "answer_relevancy": 0.7957,
+      "answer_correctness": 0.654
     },
     {
-      "question": "Does Bedrock support tag-based access control for its resources?",
-      "category": "paraphrase",
-      "predicted_answer": "Yes, Amazon Bedrock supports tag-based access control for its resources, as seen in the ability to add tags to guardrails and reference tagging in policy examples [Chunk 1][Chunk 3].",
-      "ground_truth_answer": "Yes, Amazon Bedrock supports attribute-based access control (ABAC) using tags, with condition keys like aws:ResourceTag, aws:RequestTag, and aws:TagKeys.",
-      "context_precision": 0.0,
-      "context_recall": 0.0,
-      "faithfulness": 0.6667,
-      "answer_relevancy": 0.9005,
-      "answer_correctness": 0.6028
+      "question": "In Amazon Bedrock inference, which service tier is used by default when the 'service_tier' parameter is missing?",
+      "category": "factual",
+      "predicted_answer": "The Standard tier is used by default when the \"service_tier\" parameter is missing [Chunk 1][Chunk 2].",
+      "ground_truth_answer": "By default, inference requests are routed to the Standard tier when the 'service_tier' parameter is missing.",
+      "context_precision": 1.0,
+      "context_recall": 1.0,
+      "faithfulness": 1.0,
+      "answer_relevancy": 0.7763,
+      "answer_correctness": 0.7207
     },
     {
       "question": "What is the default PostgreSQL version used internally by Bedrock?",

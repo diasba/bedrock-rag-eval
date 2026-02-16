@@ -1,41 +1,37 @@
+The following table describes runtime invocation metrics provided by Amazon Bedrock.
 
-TITLE: Amazon Bedrock runtime metrics
-SOURCE: https://docs.aws.amazon.com/bedrock/latest/userguide/monitoring.html
-
-The following table describes runtime metrics provided by Amazon Bedrock.
-
-Metric: Invocations
+1) Metric: Invocations
 Unit: SampleCount
 Description: Number of successful requests to the Converse, ConverseStream, InvokeModel, and InvokeModelWithResponseStream API operations.
 
-Metric: InvocationLatency
+2) Metric: InvocationLatency
 Unit: MilliSeconds
 Description: Latency of the invocations.
 
-Metric: InvocationClientErrors
+3) Metric: InvocationClientErrors
 Unit: SampleCount
 Description: Number of invocations that result in client-side errors.
 
-Metric: InvocationServerErrors
+4) Metric: InvocationServerErrors
 Unit: SampleCount
 Description: Number of invocations that result in AWS server-side errors.
 
-Metric: InvocationThrottles
+5) Metric: InvocationThrottles
 Unit: SampleCount
 Description: Number of invocations that the system throttled. Throttled requests and other invocation errors don't count as either Invocations or Errors. The number of throttles depends on retry settings in the SDK. See "Retry behavior" in the AWS SDKs and Tools Reference Guide.
 
-Metric: InputTokenCount
+6) Metric: InputTokenCount
 Unit: SampleCount
 Description: Number of tokens in the input.
 
-Metric: LegacyModelInvocations
+7) Metric: LegacyModelInvocations
 Unit: SampleCount
 Description: Number of invocations using legacy models.
 
-Metric: OutputTokenCount
+8) Metric: OutputTokenCount
 Unit: SampleCount
 Description: Number of tokens in the output.
 
-Metric: OutputImageCount
+9) Metric: OutputImageCount
 Unit: SampleCount
 Description: Number of images in the output (only applicable for image generation models).

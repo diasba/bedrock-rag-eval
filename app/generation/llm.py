@@ -207,9 +207,10 @@ def generate_answer(
 
                 citations = _extract_citations(answer, contexts)
 
-                # Hard guard: require at least one citation for non-null answers
+                # Let caller apply citation fallback if model omitted markers.
                 if not citations:
-                    return GeneratedAnswer(answer=None, citations=[])
+                    logger.info("LLM answer had no [Chunk N] markers; returning answer without citations")
+                    return GeneratedAnswer(answer=answer, citations=[])
 
                 return GeneratedAnswer(answer=answer, citations=citations)
             except Exception as exc:  # noqa: BLE001
@@ -272,7 +273,8 @@ def generate_answer_stream(
 
                 citations = _extract_citations(full_answer, contexts)
                 if not citations:
-                    yield {"type": "done", "answer": None, "citations": []}
+                    logger.info("Streamed answer had no [Chunk N] markers; returning answer without citations")
+                    yield {"type": "done", "answer": full_answer, "citations": []}
                     return
 
                 yield {

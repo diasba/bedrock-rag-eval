@@ -31,6 +31,7 @@ https://docs.aws.amazon.com/bedrock/latest/userguide/prompt-engineering-guidelin
 https://docs.aws.amazon.com/bedrock/latest/userguide/design-a-prompt.html
 https://docs.aws.amazon.com/bedrock/latest/userguide/prompt-templates-and-examples.html
 https://docs.aws.amazon.com/bedrock/latest/userguide/prompting.html
+https://docs.aws.amazon.com/bedrock/latest/userguide/kb-evaluation-custom-metrics-prompt-formats.html
 
 # Guardrails (6)
 https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails.html

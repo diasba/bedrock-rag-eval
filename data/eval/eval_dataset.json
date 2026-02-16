@@ -1,0 +1,122 @@
+[
+  {
+    "question": "What is Amazon Bedrock?",
+    "ground_truth_answer": "Amazon Bedrock is a fully managed service that makes foundation models from leading AI companies available through a unified API.",
+    "ground_truth_context": "Amazon Bedrock is a fully managed service that makes foundation models (FMs) from leading AI startups and Amazon available via an API.",
+    "category": "factual"
+  },
+  {
+    "question": "Do you need model access permissions before using some Bedrock models?",
+    "ground_truth_answer": "Yes, you need to request and be granted model access before you can use foundation models in Amazon Bedrock.",
+    "ground_truth_context": "Before you can use a foundation model in Amazon Bedrock, you must request access to it.",
+    "category": "factual"
+  },
+  {
+    "question": "Where can you find supported models for Bedrock?",
+    "ground_truth_answer": "You can find the list of supported models in the Amazon Bedrock documentation under the supported models page.",
+    "ground_truth_context": "For a list of models supported by Amazon Bedrock and the features they support, see Supported foundation models in Amazon Bedrock.",
+    "category": "factual"
+  },
+  {
+    "question": "What is a Bedrock Knowledge Base used for?",
+    "ground_truth_answer": "A Bedrock Knowledge Base is used to give foundation models contextual information from your private data sources for Retrieval Augmented Generation (RAG).",
+    "ground_truth_context": "With knowledge bases, you can give foundation models and agents contextual information from your company's private data sources for Retrieval Augmented Generation (RAG).",
+    "category": "factual"
+  },
+  {
+    "question": "What does chunking do in a knowledge base pipeline?",
+    "ground_truth_answer": "Chunking splits documents into smaller segments so they can be efficiently embedded and retrieved during a query.",
+    "ground_truth_context": "Chunking refers to the process of splitting your source documents into discrete segments (chunks) before they are embedded and stored in a vector index.",
+    "category": "factual"
+  },
+  {
+    "question": "What is the purpose of RetrieveAndGenerate?",
+    "ground_truth_answer": "RetrieveAndGenerate queries a knowledge base, retrieves relevant results, and generates a response by augmenting the foundation model prompt with the retrieved information.",
+    "ground_truth_context": "RetrieveAndGenerate queries a knowledge base and generates responses based on the retrieved results, augmenting the foundation model prompt with context from the search results.",
+    "category": "factual"
+  },
+  {
+    "question": "What is enabled by default with the correct AWS Marketplace permissions, and which table shows model support by AWS Region?",
+    "ground_truth_answer": "Access to all Amazon Bedrock foundation models is enabled by default with the correct AWS Marketplace permissions. Model support by AWS Region is shown in the model support by AWS Region table.",
+    "ground_truth_context": "Access to all Amazon Bedrock foundation models is enabled by default with the correct AWS Marketplace permissions. The following table shows model support by AWS Region.",
+    "category": "multi_hop"
+  },
+  {
+    "question": "In fixed-size chunking, what two settings define chunk size and overlap, and in retrievalConfiguration.vectorSearchConfiguration which field sets the maximum number of results?",
+    "ground_truth_answer": "In fixed-size chunking, the two settings are the number of tokens per chunk and the overlap percentage. In retrievalConfiguration.vectorSearchConfiguration, the field that sets the maximum number of results is numberOfResults.",
+    "ground_truth_context": "Fixed-size chunking: You can configure the desired chunk size by specifying the number of tokens per chunk, and an overlap percentage. The following JSON object shows the minimal fields required in the KnowledgeBaseRetrievalConfiguration object to set the maximum number of results to return: retrievalConfiguration.vectorSearchConfiguration.numberOfResults.",
+    "category": "multi_hop"
+  },
+  {
+    "question": "In Amazon Bedrock, which feature searches your data to answer a query, and which feature evaluates both user inputs and model responses?",
+    "ground_truth_answer": "When a query is made, a knowledge base searches your data to find relevant information to answer the query. Amazon Bedrock Guardrails evaluates both user inputs and model responses.",
+    "ground_truth_context": "When a query is made, a knowledge base searches your data to find relevant information to answer the query. Amazon Bedrock Guardrails helps keep your generative AI applications safe by evaluating both user inputs and model responses.",
+    "category": "multi_hop"
+  },
+  {
+    "question": "For Amazon Bedrock inference, which endpoint is used for InvokeModel calls, and what controls model inference usage?",
+    "ground_truth_answer": "InvokeModel calls use the bedrock-runtime.{region}.amazonaws.com endpoint. Model inference in Amazon Bedrock is controlled by quotas on token usage.",
+    "ground_truth_context": "bedrock-runtime.{region}.amazonaws.com InvokeModel / Converse / Chat Completions. Model inference in Amazon Bedrock is controlled by quotas on token usage.",
+    "category": "multi_hop"
+  },
+  {
+    "question": "Can Bedrock KB do RAG-style retrieval before generation?",
+    "ground_truth_answer": "Yes, Bedrock Knowledge Bases support RAG-style retrieval before generation through the RetrieveAndGenerate API, which first queries the knowledge base for relevant results and then uses them to augment the prompt for the foundation model.",
+    "ground_truth_context": "RetrieveAndGenerate queries a knowledge base and generates responses based on the retrieved results, augmenting the foundation model prompt with context from the search results.",
+    "category": "paraphrase"
+  },
+  {
+    "question": "How do I check token count before sending a prompt?",
+    "ground_truth_answer": "You can use the CountTokens API operation to count the number of tokens in a prompt before sending it to a model.",
+    "ground_truth_context": "Use the CountTokens API to count the number of tokens in a text string or prompt before sending it to a model for inference.",
+    "category": "paraphrase"
+  },
+  {
+    "question": "Is there an API for streaming model responses?",
+    "ground_truth_answer": "Yes, Amazon Bedrock supports response streaming through the InvokeModelWithResponseStream and ConverseStream API operations. The field 'responseStreamingSupported' in the API documentation indicates whether a specific model supports streaming.",
+    "ground_truth_context": "Some Amazon Bedrock Runtime API operations support response streaming. In the API documentation, the field 'responseStreamingSupported' indicates whether a specific model supports response streaming. Relevant operations for streaming include: ConverseStream, InvokeModelWithResponseStream.",
+    "category": "paraphrase"
+  },
+  {
+    "question": "Can I directly apply a guardrail through an API call?",
+    "ground_truth_answer": "Yes, you can apply a guardrail directly through the ApplyGuardrail API operation, which evaluates content against your configured guardrail policies.",
+    "ground_truth_context": "The ApplyGuardrail API sends a request to apply a guardrail, evaluating the provided content against the policies configured in the specified guardrail.",
+    "category": "paraphrase"
+  },
+  {
+    "question": "Name at least 5 runtime invocation metrics Bedrock publishes (CloudWatch)",
+    "ground_truth_answer": "Amazon Bedrock tracks Invocations, InvocationLatency, InvocationClientErrors, InvocationServerErrors, InvocationThrottles, InputTokenCount, OutputTokenCount, LegacyModelInvocations, and OutputImageCount.",
+    "ground_truth_context": "The following table describes runtime metrics provided by Amazon Bedrock: Invocations, InvocationLatency, InvocationClientErrors, InvocationServerErrors, InvocationThrottles, InputTokenCount, LegacyModelInvocations, OutputTokenCount, OutputImageCount.",
+    "category": "paraphrase"
+  },
+  {
+    "question": "What is the Amazon Bedrock Runtime endpoint hostname format for a Region?",
+    "ground_truth_answer": "The Amazon Bedrock Runtime endpoint hostname format is bedrock-runtime.{region}.amazonaws.com.",
+    "ground_truth_context": "Use the region-specific Amazon Bedrock Runtime endpoint in the format bedrock-runtime.{region}.amazonaws.com for runtime inference operations (for example, InvokeModel).",
+    "category": "factual"
+  },
+  {
+    "question": "What is the default PostgreSQL version used internally by Bedrock?",
+    "ground_truth_answer": null,
+    "ground_truth_context": "",
+    "category": "no_answer"
+  },
+  {
+    "question": "Which color theme does the AWS Bedrock console use by default?",
+    "ground_truth_answer": null,
+    "ground_truth_context": "",
+    "category": "no_answer"
+  },
+  {
+    "question": "What salary does an AWS Bedrock product manager earn?",
+    "ground_truth_answer": null,
+    "ground_truth_context": "",
+    "category": "no_answer"
+  },
+  {
+    "question": "What was the weather in Seattle when Bedrock launched?",
+    "ground_truth_answer": null,
+    "ground_truth_context": "",
+    "category": "no_answer"
+  }
+]
