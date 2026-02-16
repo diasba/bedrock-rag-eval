@@ -1,7 +1,8 @@
 """Auto-Research Agent — generates sub-questions, queries RAG, synthesises report.
 
 MVP implementation: template-based sub-question generation with lightweight
-deduplication, internal RAG pipeline calls (no HTTP round-trips), and an
+deduplication, internal RAG pipeline calls (no HTTP round-trips), gap-driven
+single retry, per-finding confidence scoring, contradiction flagging, and an
 optional LLM synthesis step with deterministic fallback.
 """
 
@@ -30,13 +31,23 @@ _TEMPLATES: list[str] = [
 ]
 
 
+# ── Dataclasses ────────────────────────────────────────────────────────
+
 @dataclass
 class Finding:
     subquestion: str
     answer: str | None
     citations: list[dict[str, str]]
-    status: str  # "answered" | "gap"
+    status: str  # "answered" | "gap" | "answered_after_retry"
     contexts: list[dict] = field(default_factory=list)
+    # retry tracking
+    attempts: int = 1
+    retried_subquestion: str | None = None
+    retry_resolved: bool = False
+    # evidence quality
+    confidence: float = 0.0
+    citation_count: int = 0
+    unique_docs: int = 0
 
 
 @dataclass
@@ -46,13 +57,21 @@ class Gap:
 
 
 @dataclass
+class Conflict:
+    finding_a: str
+    finding_b: str
+    reason: str
+
+
+@dataclass
 class ResearchResult:
     topic: str
     subquestions: list[str]
     findings: list[Finding]
     gaps: list[Gap]
     final_summary: str
-    stats: dict[str, int]
+    stats: dict[str, object]
+    possible_conflicts: list[Conflict] = field(default_factory=list)
 
 
 # ── Sub-question generation ────────────────────────────────────────────
@@ -93,6 +112,145 @@ def _query_rag(question: str, top_k: int = 4, include_context: bool = False) -> 
     return response.model_dump()
 
 
+# ── Gap-driven retry ──────────────────────────────────────────────────
+
+_REPHRASE_PREFIXES: list[str] = [
+    "Explain in detail",
+    "Provide specifics about",
+    "Describe the concept of",
+    "Summarise the main points of",
+]
+
+
+def _reformulate(original: str) -> str:
+    """Deterministic rephrase: strip interrogative form, prepend directive."""
+    body = re.sub(
+        r"^(what|how|why|when|where|which|who|does|do|is|are|can)\s+",
+        "",
+        original.rstrip("?").strip(),
+        flags=re.IGNORECASE,
+    )
+    prefix = _REPHRASE_PREFIXES[len(original) % len(_REPHRASE_PREFIXES)]
+    return f"{prefix} {body}?"
+
+
+def _retry_gaps(
+    findings: list[Finding],
+    gaps: list[Gap],
+    top_k: int,
+    include_context: bool,
+) -> None:
+    """Single-retry pass: re-query each gap with a reformulated question.
+
+    Mutates *findings* and *gaps* in place.
+    """
+    gap_indices = [i for i, f in enumerate(findings) if f.status == "gap"]
+    resolved_gap_subs: set[str] = set()
+
+    for idx in gap_indices:
+        finding = findings[idx]
+        rephrased = _reformulate(finding.subquestion)
+        finding.retried_subquestion = rephrased
+        finding.attempts = 2
+
+        try:
+            result = _query_rag(rephrased, top_k=top_k, include_context=include_context)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Retry query failed for %r: %s", rephrased, exc)
+            continue
+
+        answer = result.get("answer")
+        citations = result.get("citations") or []
+        contexts = result.get("retrieved") or []
+
+        if answer is not None and citations:
+            finding.answer = answer
+            finding.citations = citations
+            finding.contexts = contexts
+            finding.status = "answered_after_retry"
+            finding.retry_resolved = True
+            resolved_gap_subs.add(finding.subquestion)
+
+    # Remove resolved gaps from the gap list
+    if resolved_gap_subs:
+        gaps[:] = [g for g in gaps if g.subquestion not in resolved_gap_subs]
+
+
+# ── Evidence quality scoring ───────────────────────────────────────────
+
+
+def _score_confidence(finding: Finding) -> None:
+    """Compute a deterministic confidence score and populate quality fields.
+
+    Formula:
+        base = min(citation_count / 3, 1.0) * 0.6
+             + min(unique_docs / 2, 1.0) * 0.4
+        penalty: 0.0 if answer is None
+        clamp to [0.0, 1.0]
+    """
+    cites = finding.citations or []
+    finding.citation_count = len(cites)
+    finding.unique_docs = len({c.get("doc_id") or c.get("chunk_id", "") for c in cites})
+
+    if finding.answer is None:
+        finding.confidence = 0.0
+        return
+
+    base = min(finding.citation_count / 3, 1.0) * 0.6 + min(finding.unique_docs / 2, 1.0) * 0.4
+    finding.confidence = round(max(0.0, min(base, 1.0)), 4)
+
+
+# ── Contradiction flagging ─────────────────────────────────────────────
+
+_OPPOSITION_PAIRS: list[tuple[str, str]] = [
+    ("required", "optional"),
+    ("supported", "not supported"),
+    ("enabled", "disabled"),
+    ("enabled by default", "disabled by default"),
+    ("available", "not available"),
+    ("allowed", "not allowed"),
+    ("included", "not included"),
+    ("encrypted", "not encrypted"),
+    ("free", "paid"),
+    ("synchronous", "asynchronous"),
+]
+
+
+def _detect_conflicts(findings: list[Finding]) -> list[Conflict]:
+    """Lightweight keyword-opposition heuristic across answered findings.
+
+    Only compares pairs of answered findings.  Conservative: both terms in a
+    pair must appear in different findings to flag.
+    """
+    answered = [
+        f for f in findings
+        if f.status in ("answered", "answered_after_retry") and f.answer
+    ]
+    conflicts: list[Conflict] = []
+    seen_pairs: set[tuple[int, int]] = set()
+
+    for i, fa in enumerate(answered):
+        text_a = fa.answer.lower()  # type: ignore[union-attr]
+        for j, fb in enumerate(answered):
+            if j <= i or (i, j) in seen_pairs:
+                continue
+            text_b = fb.answer.lower()  # type: ignore[union-attr]
+
+            for term_x, term_y in _OPPOSITION_PAIRS:
+                if (term_x in text_a and term_y in text_b) or (
+                    term_y in text_a and term_x in text_b
+                ):
+                    conflicts.append(Conflict(
+                        finding_a=fa.subquestion,
+                        finding_b=fb.subquestion,
+                        reason=f"Potential opposition: '{term_x}' vs '{term_y}'",
+                    ))
+                    seen_pairs.add((i, j))
+                    break  # one conflict per pair is enough
+
+    return conflicts
+
+
 # ── Research pipeline ──────────────────────────────────────────────────
 
 
@@ -107,7 +265,10 @@ def run_research(
     1. Generate sub-questions from *topic*.
     2. Query existing RAG for each.
     3. Classify findings / gaps.
-    4. Synthesise a summary (LLM or fallback).
+    4. Single retry pass for gaps.
+    5. Score evidence quality per finding.
+    6. Detect possible contradictions.
+    7. Synthesise a summary (LLM or fallback).
     """
     subquestions = generate_subquestions(topic, max_subquestions)
     logger.info("Research agent: %d sub-questions for topic=%r", len(subquestions), topic)
@@ -136,7 +297,6 @@ def run_research(
             ))
             gaps.append(Gap(subquestion=sq, reason="no_answer"))
         elif not citations:
-            # Answer exists but no grounding — low evidence
             findings.append(Finding(
                 subquestion=sq,
                 answer=answer,
@@ -154,8 +314,22 @@ def run_research(
                 contexts=contexts,
             ))
 
+    # ── Step 4: gap-driven retry ───────────────────────────────────
+    _retry_gaps(findings, gaps, top_k=top_k, include_context=include_context)
+
+    # ── Step 5: evidence quality scoring ───────────────────────────
+    for f in findings:
+        _score_confidence(f)
+
+    # ── Step 6: contradiction detection ────────────────────────────
+    possible_conflicts = _detect_conflicts(findings)
+
+    # ── Stats ──────────────────────────────────────────────────────
     answered_count = sum(1 for f in findings if f.status == "answered")
+    retry_count = sum(1 for f in findings if f.status == "answered_after_retry")
     gap_count = sum(1 for f in findings if f.status == "gap")
+    confidences = [f.confidence for f in findings]
+    avg_confidence = round(sum(confidences) / len(confidences), 4) if confidences else 0.0
 
     # ── Synthesis ──────────────────────────────────────────────────
     final_summary = _synthesise_summary(topic, findings)
@@ -166,7 +340,13 @@ def run_research(
         findings=findings,
         gaps=gaps,
         final_summary=final_summary,
-        stats={"answered_count": answered_count, "gap_count": gap_count},
+        stats={
+            "answered_count": answered_count,
+            "answered_after_retry_count": retry_count,
+            "gap_count": gap_count,
+            "avg_confidence": avg_confidence,
+        },
+        possible_conflicts=possible_conflicts,
     )
 
 
@@ -182,7 +362,10 @@ _SYNTHESIS_SYSTEM = (
 
 def _synthesise_summary(topic: str, findings: list[Finding]) -> str:
     """Build a final summary — LLM-backed when available, else deterministic."""
-    answered = [f for f in findings if f.status == "answered" and f.answer]
+    answered = [
+        f for f in findings
+        if f.status in ("answered", "answered_after_retry") and f.answer
+    ]
     gap_questions = [f.subquestion for f in findings if f.status == "gap"]
 
     # Fast deterministic fallback

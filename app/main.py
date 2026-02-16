@@ -10,7 +10,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from starlette.responses import FileResponse, StreamingResponse
 
 from app.config import (
@@ -155,13 +155,27 @@ class AgentFindingResponse(BaseModel):
     subquestion: str
     answer: str | None
     citations: list[CitationResponse]
-    status: str  # "answered" | "gap"
-    contexts: list[RetrievedChunkResponse] = []
+    status: str  # "answered" | "gap" | "answered_after_retry"
+    contexts: list[RetrievedChunkResponse] = Field(default_factory=list)
+    # retry tracking
+    attempts: int = 1
+    retried_subquestion: str | None = None
+    retry_resolved: bool = False
+    # evidence quality
+    confidence: float = 0.0
+    citation_count: int = 0
+    unique_docs: int = 0
 
 
 class AgentGapResponse(BaseModel):
     subquestion: str
     reason: str  # "no_answer" | "low_evidence"
+
+
+class AgentConflictResponse(BaseModel):
+    finding_a: str
+    finding_b: str
+    reason: str
 
 
 class AgentResearchResponse(BaseModel):
@@ -170,7 +184,8 @@ class AgentResearchResponse(BaseModel):
     findings: list[AgentFindingResponse]
     gaps: list[AgentGapResponse]
     final_summary: str
-    stats: dict[str, int]
+    stats: dict[str, object]
+    possible_conflicts: list[AgentConflictResponse] = Field(default_factory=list)
 
 
 # ── Endpoints ──────────────────────────────────────────────────────────
@@ -724,6 +739,12 @@ def agent_research(body: AgentResearchRequest) -> AgentResearchResponse:
                 contexts=[
                     RetrievedChunkResponse(**ctx) for ctx in f.contexts
                 ],
+                attempts=f.attempts,
+                retried_subquestion=f.retried_subquestion,
+                retry_resolved=f.retry_resolved,
+                confidence=f.confidence,
+                citation_count=f.citation_count,
+                unique_docs=f.unique_docs,
             )
             for f in result.findings
         ],
@@ -733,6 +754,14 @@ def agent_research(body: AgentResearchRequest) -> AgentResearchResponse:
         ],
         final_summary=result.final_summary,
         stats=result.stats,
+        possible_conflicts=[
+            AgentConflictResponse(
+                finding_a=c.finding_a,
+                finding_b=c.finding_b,
+                reason=c.reason,
+            )
+            for c in result.possible_conflicts
+        ],
     )
 
 

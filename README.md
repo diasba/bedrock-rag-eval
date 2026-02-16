@@ -24,40 +24,110 @@ To reflect a real-world scenario, I used a mixed corpus of PDF, TXT, and HTML do
 | Metrics (Context Precision/Recall, Faithfulness, Relevancy, Correctness) via RAGAS + DeepEval | Done | `scripts/run_eval.py` |
 | Evaluation report with aggregate + per-question + failure analysis + improvements | Done | `reports/eval_report.md` |
 | README with architecture, setup, tradeoffs, limitations, improvements | Done | this file |
-| Agentic research endpoint (extra credit) | Done | `POST /agent/research`, `app/agent/research.py` |
+| Agentic research endpoint **(extra credit)** | Done | `POST /agent/research`, `app/agent/research.py` |
 
 ---
 
 ## Architecture
 
-```text
-                   +-----------------------------+
-                   |      Host (evaluation)      |
-                   | scripts/run_eval.py         |
-                   | RAGAS + DeepEval            |
-                   +--------------+--------------+
-                                  |
-                                  v
-          +------------------- Docker Compose -------------------+
-          |                                                     |
-          |  +-------------------+      +--------------------+  |
-          |  | rag-api (FastAPI) |<---->| chroma (Vector DB) |  |
-          |  | /ingest, /query   |      | persistent storage |  |
-          |  +-------------------+      +--------------------+  |
-          |                                                     |
-          +-----------------------------------------------------+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                          HOST  (evaluation layer)                          │
+│                                                                             │
+│   📊 scripts/run_eval.py ──► RAGAS + DeepEval                              │
+│       ctx_precision · ctx_recall · faithfulness · relevancy · correctness   │
+└───────────────────────────────────┬─────────────────────────────────────────┘
+                                    │  HTTP
+                                    ▼
+┌─── Docker Compose ────────────────────────────────────────────────────────┐
+│                                                                           │
+│   ┌───────────────────────────────────┐    ┌───────────────────────────┐  │
+│   │         rag-api  (FastAPI)        │    │   chroma  (Vector DB)     │  │
+│   │                                   │    │                           │  │
+│   │  📥 /ingest                       │    │   cosine similarity       │  │
+│   │     loader → chunker → embedder ──┼──► │   persistent volume       │  │
+│   │                                   │    │   chromadb/chroma:0.6.3   │  │
+│   │  🔍 /query                        │    └───────────────────────────┘  │
+│   │     embed → hybrid retrieve ──────┼──► vector + BM25 fusion           │
+│   │     rerank → generate → cite      │                                   │
+│   │                                   │    ┌───────────────────────────┐  │
+│   │  🤖 /agent/research               │    │   Mistral API (external)  │  │
+│   │     sub-questions → RAG loop ─────┼──► │   mistral-large-latest    │  │
+│   │     retry gaps → score evidence   │    │   mistral-small (fallback)│  │
+│   │     detect conflicts → synthesise │    └───────────────────────────┘  │
+│   │                                   │                                   │
+│   │  🌐 /ui   (single-page web UI)   │                                   │
+│   └───────────────────────────────────┘                                   │
+│                                                                           │
+└───────────────────────────────────────────────────────────────────────────┘
+```
+
+### Data Flow
+
+```
+ User query
+   │
+   ▼
+ ┌──────────┐    ┌───────────┐    ┌──────────┐    ┌───────────┐    ┌──────────┐
+ │ Embed    │──►│ Retrieve   │──►│ Rerank   │──►│ Generate   │──►│ Response  │
+ │ question │   │ vector+BM25│   │ cross-enc│   │ LLM+cite   │   │ + chunks  │
+ └──────────┘   └───────────┘   └──────────┘   └───────────┘   └──────────┘
+                     │                                │
+                     ▼                                ▼
+               ChromaDB store                   Mistral API
+```
+
+### Agent Research Pipeline
+
+```
+ Topic
+   │
+   ▼
+ ┌────────────┐    ┌─────────┐    ┌───────────┐    ┌──────────┐    ┌──────────┐
+ │ Generate   │──►│ Query   │──►│ Retry     │──►│ Score    │──►│ Detect    │
+ │ sub-Qs     │   │ RAG ×N  │   │ gaps ×1   │   │ evidence │   │ conflicts │
+ └────────────┘   └─────────┘   └───────────┘   └──────────┘   └──────────┘
+                                                                      │
+                                                                      ▼
+                                                               ┌──────────┐
+                                                               │Synthesise│
+                                                               │ summary  │
+                                                               └──────────┘
 ```
 
 ---
 
 ## Tech Stack
 
-- Python 3.11
-- FastAPI + Uvicorn
-- ChromaDB (separate containerized vector DB service)
-- sentence-transformers `all-MiniLM-L6-v2` (local embeddings)
-- Mistral API (optional for generation and judge mode)
-- RAGAS + DeepEval (evaluation)
+- **Runtime / deployment**
+  - Docker + Docker Compose
+  - Python 3.11
+
+- **API / application**
+  - FastAPI + Uvicorn
+  - Pydantic v2
+  - `python-dotenv` (environment configuration)
+
+- **Ingestion / retrieval**
+  - ChromaDB (separate containerized vector DB service)
+  - `sentence-transformers/all-MiniLM-L6-v2` (local embeddings)
+  - `pypdf` (PDF parsing)
+  - Hybrid retrieval with **custom in-repo BM25 implementation** (no external BM25 package)
+  - Optional reranking (local cross-encoder, optional Cohere provider)
+
+- **Generation / LLM**
+  - Mistral API (primary provider; optional for generation and judge mode)
+  - OpenAI Python SDK (used with Mistral's OpenAI-compatible endpoint)
+
+- **Evaluation**
+  - RAGAS
+  - DeepEval
+  - Hugging Face `datasets`
+  - `langchain-openai` (evaluation integration)
+
+- **Testing / utilities**
+  - Pytest
+  - `httpx` (client calls in scripts and checks)
 
 ---
 
@@ -189,24 +259,26 @@ If the question is not answerable from corpus:
 ## Agentic Research Endpoint (Extra Credit)
 
 `POST /agent/research` autonomously decomposes a broad topic into sub-questions,
-queries the existing RAG pipeline for each, synthesises a structured mini-report,
-and identifies knowledge gaps.
+queries the existing RAG pipeline for each, retries gaps with reformulated
+questions, scores evidence quality, flags potential contradictions, and
+synthesises a structured mini-report.
 
 **Request:**
 
 ```json
 {
   "topic": "Amazon Bedrock Knowledge Bases",
-  "max_subquestions": 5
+  "max_subquestions": 5,
+  "include_context": true
 }
 ```
 
-**curl example:**
+**curl example (with context chunks):**
 
 ```bash
 curl -s -X POST http://localhost:8000/agent/research \
   -H "Content-Type: application/json" \
-  -d '{"topic": "Amazon Bedrock Knowledge Bases", "max_subquestions": 5}' \
+  -d '{"topic": "Amazon Bedrock Knowledge Bases", "max_subquestions": 5, "include_context": true}' \
   | python3 -m json.tool
 ```
 
@@ -216,17 +288,42 @@ curl -s -X POST http://localhost:8000/agent/research \
 |---|---|
 | `topic` | Original research topic |
 | `subquestions` | Auto-generated sub-questions |
-| `findings[]` | Per-sub-question: answer, citations, status (`answered`/`gap`) |
-| `gaps[]` | Sub-questions with no answer or low evidence |
+| `findings[]` | Per-sub-question results (see below) |
+| `gaps[]` | Sub-questions with no answer or low evidence (after retry) |
 | `final_summary` | LLM-synthesised summary (deterministic fallback if LLM unavailable) |
-| `stats` | `answered_count`, `gap_count` |
+| `stats` | `answered_count`, `answered_after_retry_count`, `gap_count`, `avg_confidence` |
+| `possible_conflicts[]` | Pairs of findings with potentially contradictory statements |
+
+**Finding fields:**
+
+| Field | Description |
+|---|---|
+| `subquestion` | The sub-question asked |
+| `answer` | RAG answer (or `null` for gaps) |
+| `citations` | `[{doc_id, chunk_id}]` |
+| `status` | `answered` · `gap` · `answered_after_retry` |
+| `contexts` | Retrieved chunks (populated when `include_context=true`) |
+| `attempts` | 1 (initial only) or 2 (retried) |
+| `retried_subquestion` | Reformulated question used for retry (`null` if not retried) |
+| `retry_resolved` | `true` if retry turned a gap into an answer |
+| `confidence` | Evidence quality score `[0.0, 1.0]` |
+| `citation_count` | Number of citations |
+| `unique_docs` | Number of distinct source documents cited |
 
 **Design decisions:**
 
-- Sub-questions are template-generated (deterministic, no extra LLM call).
-- Each sub-question reuses the existing `/query` pipeline internally (no HTTP round-trip).
-- Gaps are classified as `no_answer` (null response) or `low_evidence` (answer but no citations).
-- Summary uses LLM synthesis when available, with a deterministic fallback that stitches findings.
+- **Sub-question generation** — template-based, deterministic, no extra LLM call.
+- **Internal RAG calls** — reuses `/query` pipeline directly (no HTTP round-trip).
+- **Gap-driven retry** — each gap is retried once with a deterministic reformulation
+  (strip interrogative prefix, prepend directive). If the retry succeeds (non-null answer
+  with citations), the finding status becomes `answered_after_retry`.
+- **Evidence quality** — deterministic formula: `min(citations/3, 1) × 0.6 + min(unique_docs/2, 1) × 0.4`.
+  Null answers get confidence `0.0`. Clamped to `[0, 1]`.
+- **Contradiction flagging** — lightweight keyword-opposition heuristic comparing pairs of
+  answered findings. Checks for term pairs like *required/optional*, *supported/not supported*,
+  *enabled/disabled*. Conservative to avoid false positives.
+- **Summary synthesis** — LLM when available, deterministic fallback otherwise.
+  Both treat `answered_after_retry` findings as answered.
 
 ---
 
@@ -306,11 +403,11 @@ python3 scripts/run_eval.py \
 From `reports/eval_report.md`:
 | Metric | Score |
 |---|---|
-| Context Precision | 0.7639 |
-| Context Recall | 0.8160 |
-| Faithfulness | 1.0000 |
-| Answer Relevancy | 0.7631 |
-| Answer Correctness | 0.6326 |
+| Context Precision | 0.6111 |
+| Context Recall | 0.7028 |
+| Faithfulness | 0.8500 |
+| Answer Relevancy | 0.6104 |
+| Answer Correctness | 0.7061 |
 
 ---
 
@@ -320,6 +417,66 @@ From `reports/eval_report.md`:
 - Prompt-driven decomposition into small verifiable deliverables.
 - Frequent re-evaluation after targeted retrieval/generation changes.
 - Test-backed refinements (query behavior and contracts validated with pytest).
+
+### Iteration timeline (what changed and why)
+
+1. **MVP-first build strategy**
+   - Implemented `/ingest`, `/query`, `/health`, deterministic IDs, and citation contract first.
+   - Priority was a working, inspectable baseline before adding optimizations.
+
+2. **Retrieval + no-answer hardening**
+   - Added hybrid retrieval, diversity controls, reranking hooks, and stricter fallback handling.
+   - Explicitly enforced `answer=null` + empty citations for no-answer behavior.
+
+3. **Provider evolution (Groq -> Mistral)**
+   - Early iterations explored Groq during rapid prototyping.
+   - Final implementation standardized on **Mistral** to match current task constraints and keep one provider path for generation + judge-mode evaluation.
+   - API keys remained env-driven (`.env`, `.env.example`), never hardcoded.
+
+4. **Evaluation maturity (heuristic -> judge mode)**
+   - Started with heuristic checks to unblock iteration speed.
+   - Upgraded to judge-backed RAGAS + DeepEval to get stricter faithfulness/relevancy/correctness signals.
+   - Failure analysis from eval results directly informed retrieval and dataset adjustments.
+
+5. **Agent evolution**
+   - Initial extra-credit version: sub-question decomposition + report synthesis.
+   - Extended to single retry for gaps, evidence confidence scoring, contradiction hints, and optional context exposure for audit/debug (`include_context=true`).
+   - Added dedicated tests to keep this behavior stable.
+
+### What this demonstrates
+
+- AI was used as an **engineering accelerator**, not a black box:
+  - decomposition into small deliverables,
+  - measurable checkpoints (tests + eval reruns),
+  - iterative correction when regressions appeared.
+
+---
+
+## Why This Project Is Useful In Real-World Deployment
+
+1. **Grounded internal assistant with auditability**
+   - Answers include chunk-level citations (`doc_id`, `chunk_id`) so teams can verify claims quickly.
+   - Useful for internal support, docs operations, and engineering enablement.
+
+2. **Safer behavior under uncertainty**
+   - Strict no-answer contract prevents fabricated answers when evidence is missing.
+   - This is especially important for regulated or high-trust workflows.
+
+3. **Built-in quality loop**
+   - Evaluation pipeline (dataset + RAGAS + DeepEval + report) enables repeatable regression checks.
+   - Teams can compare runs before/after retrieval/model/config changes.
+
+4. **Low operational friction**
+   - Full stack is containerized (`rag-api` + `chroma`) and runs locally.
+   - Env-driven config and modular app structure allow straightforward transition to VM/K8s setups.
+
+5. **Agent endpoint solves practical research tasks**
+   - `/agent/research` transforms one broad topic into a structured, evidence-backed mini-report with:
+     - answered findings,
+     - unresolved gaps,
+     - confidence signals,
+     - possible contradictions.
+   - This is directly useful for analysts, architects, and support teams who need fast scoped research from a known corpus.
 
 ---
 
