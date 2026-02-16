@@ -15,6 +15,7 @@ import threading
 from collections import Counter
 
 from app.db.chroma import RetrievedChunk
+from app.retrieval.detection import is_multihop
 
 logger = logging.getLogger(__name__)
 
@@ -35,20 +36,6 @@ def _tokenize(text: str) -> list[str]:
     tokens = re.findall(r"[a-zA-Z0-9]+", text.lower())
     return [t for t in tokens if t not in _STOPWORDS and len(t) > 1]
 
-
-_MULTI_HOP_HINTS = (
-    " and ",
-    " together ",
-    " both ",
-    " vs ",
-    " versus ",
-    " compared ",
-    " compare ",
-    " complement",
-    " influence",
-    " affect",
-    " relationship",
-)
 
 _SUBQUERY_SPLIT_RE = re.compile(
     r"\b(?:and|vs|versus|compared to|as well as|together with)\b",
@@ -78,11 +65,7 @@ _QUERY_NOISE_TERMS = {
 
 def is_multi_hop_question(question: str) -> bool:
     """Heuristic multi-hop detection used to trigger query expansion."""
-    normalized = re.sub(r"\s+", " ", question.strip().lower())
-    q = f" {normalized} "
-    if len(q.split()) < 7:
-        return False
-    return any(hint in q for hint in _MULTI_HOP_HINTS)
+    return is_multihop(question)
 
 
 def expand_query_variants(question: str) -> list[str]:

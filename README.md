@@ -2,11 +2,19 @@
 
 Containerized local RAG service for AWS Bedrock docs with ingestion, hybrid retrieval, grounded answers with citations, and evaluation using RAGAS + DeepEval.
 
+## Important note: 
+
+The full implementation (core requirements + bonus) was completed within ~36 hours. The goal was to deliver a functional MVP with clear architecture and documented limitations, leaving well-defined next steps for production hardening and quality improvements.
+
+## Sources: 
+
+To reflect a real-world scenario, I used a mixed corpus of PDF, TXT, and HTML documents as the knowledge sources.
+
 ## Requirement Coverage
 
 | Requirement | Status | Evidence |
 |---|---|---|
-| Containerized service (`docker compose up`) | Done | `docker-compose.yml`, `Dockerfile` |
+| Containerized full stack (`docker compose up`: app + vector DB) | Done | `docker-compose.yml` (`rag-api` + `chroma`), `Dockerfile` |
 | Ingest Markdown / PDF / TXT | Done | `POST /ingest`, `app/ingest/loader.py` |
 | Fixed-size chunking + local embeddings + ChromaDB | Done | `app/ingest/chunker.py`, `app/ingest/embedder.py`, `app/db/chroma.py` |
 | REST API: `/health`, `/ingest`, `/query` | Done | `app/main.py` |
@@ -31,18 +39,14 @@ Note: the **agentic research endpoint** is not included (extra credit scope).
                    +--------------+--------------+
                                   |
                                   v
-+-------------------------- Docker Container --------------------------+
-| FastAPI app (app/main.py)                                          |
-|                                                                     |
-|  /ingest  -> loader -> fixed-size chunker -> MiniLM embeddings      |
-|                  -> ChromaDB persistent collection                  |
-|                                                                     |
-|  /query   -> query expansion -> vector search (Chroma)              |
-|            -> BM25 hybrid fusion -> rerank (optional)               |
-|            -> no-answer gate -> Mistral generation -> citations     |
-|                                                                     |
-|  /health, /stats, /query/stream, /ui                               |
-+---------------------------------------------------------------------+
+          +------------------- Docker Compose -------------------+
+          |                                                     |
+          |  +-------------------+      +--------------------+  |
+          |  | rag-api (FastAPI) |<---->| chroma (Vector DB) |  |
+          |  | /ingest, /query   |      | persistent storage |  |
+          |  +-------------------+      +--------------------+  |
+          |                                                     |
+          +-----------------------------------------------------+
 ```
 
 ---
@@ -51,7 +55,7 @@ Note: the **agentic research endpoint** is not included (extra credit scope).
 
 - Python 3.11
 - FastAPI + Uvicorn
-- ChromaDB (persistent local vector store)
+- ChromaDB (separate containerized vector DB service)
 - sentence-transformers `all-MiniLM-L6-v2` (local embeddings)
 - Mistral API (optional for generation and judge mode)
 - RAGAS + DeepEval (evaluation)
@@ -104,6 +108,10 @@ Secrets are loaded from `.env`; do not commit `.env`.
 ```bash
 docker compose up --build -d
 ```
+
+This starts:
+- `rag-api` at `http://localhost:8000`
+- `chroma` at `http://localhost:8001`
 
 ### 3) Ingest corpus
 
@@ -251,11 +259,11 @@ python3 scripts/run_eval.py \
 
 From `reports/eval_report.md`:
 
-- Context Precision: **0.6556**
-- Context Recall: **0.7750**
+- Context Precision: **0.6208**
+- Context Recall: **0.6417**
 - Faithfulness: **0.8083**
-- Answer Relevancy: **0.5941**
-- Answer Correctness: **0.7300**
+- Answer Relevancy: **0.5699**
+- Answer Correctness: **0.6831**
 
 ---
 
@@ -315,4 +323,3 @@ python3 -m pytest -q tests/test_query.py
 # Eval
 python3 scripts/run_eval.py --dataset data/eval/eval_dataset.jsonl --api-url http://localhost:8000 --require-llm
 ```
-

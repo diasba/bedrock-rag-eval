@@ -9,17 +9,17 @@ from dataclasses import dataclass
 import chromadb
 from chromadb.config import Settings
 
-from app.config import CHROMA_COLLECTION, CHROMA_DIR, MAX_CHUNKS_PER_DOC, TOP_K
+from app.config import (
+    CHROMA_COLLECTION, CHROMA_DIR, CHROMA_HOST, CHROMA_PORT, CHROMA_SSL,
+    MAX_CHUNKS_PER_DOC, TOP_K,
+)
 from app.ingest.chunker import Chunk
+from app.retrieval.detection import is_multihop
 
 logger = logging.getLogger(__name__)
 
 _client: chromadb.ClientAPI | None = None
 
-_MULTI_HOP_RE = re.compile(
-    r"\b(and|both|together|vs|versus|compared|complementary|influence|affect)\b",
-    re.IGNORECASE,
-)
 _LIST_STYLE_RE = re.compile(
     r"\b(list|name|enumerate|at least|what are|which|metrics|fields|types|steps|limits?)\b",
     re.IGNORECASE,
@@ -61,11 +61,20 @@ def get_client() -> chromadb.ClientAPI:
     """Return a persistent Chroma client (singleton)."""
     global _client  # noqa: PLW0603
     if _client is None:
-        logger.info("Initialising ChromaDB at %s", CHROMA_DIR)
-        _client = chromadb.PersistentClient(
-            path=CHROMA_DIR,
-            settings=Settings(anonymized_telemetry=False),
-        )
+        if CHROMA_HOST:
+            logger.info("Initialising ChromaDB HTTP client at %s:%d", CHROMA_HOST, CHROMA_PORT)
+            _client = chromadb.HttpClient(
+                host=CHROMA_HOST,
+                port=CHROMA_PORT,
+                ssl=CHROMA_SSL,
+                settings=Settings(anonymized_telemetry=False),
+            )
+        else:
+            logger.info("Initialising ChromaDB persistent client at %s", CHROMA_DIR)
+            _client = chromadb.PersistentClient(
+                path=CHROMA_DIR,
+                settings=Settings(anonymized_telemetry=False),
+            )
     return _client
 
 
@@ -203,7 +212,7 @@ def query_chunks(
 
     # Fetch more than top_k to allow for diversity and filtering.
     fetch_k = max(top_k * 4, 24)
-    multi_hop_query = bool(_MULTI_HOP_RE.search(question)) and len(question.split()) >= 7
+    multi_hop_query = is_multihop(question)
     list_style_query = _is_list_style_query(question)
     if multi_hop_query:
         fetch_k = max(fetch_k, top_k * 10, 60)

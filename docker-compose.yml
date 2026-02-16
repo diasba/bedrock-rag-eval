@@ -1,16 +1,30 @@
 services:
+  chroma:
+    image: chromadb/chroma:0.6.3
+    ports:
+      - "8001:8000"
+    environment:
+      - IS_PERSISTENT=TRUE
+      - PERSIST_DIRECTORY=/chroma/chroma
+      - ANONYMIZED_TELEMETRY=FALSE
+    volumes:
+      - chroma-data:/chroma/chroma
+
   rag-api:
     build: .
+    depends_on:
+      - chroma
     ports:
       - "8000:8000"
     volumes:
-      - chroma-data:/app/chroma
       - ./data:/app/data:ro
     env_file:
       - path: .env
         required: false
     environment:
-      - CHROMA_DIR=/app/chroma
+      - CHROMA_HOST=chroma
+      - CHROMA_PORT=8000
+      - CHROMA_SSL=false
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
       interval: 30s

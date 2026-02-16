@@ -17,6 +17,7 @@ import re
 from dataclasses import dataclass
 
 from app.db.chroma import RetrievedChunk
+from app.retrieval.detection import is_multihop as detect_multihop
 
 logger = logging.getLogger(__name__)
 
@@ -38,11 +39,6 @@ _RELATIONAL_TAIL_RE = re.compile(
     r"\s+\b(?:together|both|important|complementary|complement|influence|"
     r"affect|impact)\b.*$",
     re.IGNORECASE,
-)
-
-_MULTI_HOP_SIGNALS = (
-    " and ", " together ", " both ", " vs ", " versus ",
-    " compared ", " complement", " influence", " affect",
 )
 
 _NOISE = frozenset(
@@ -71,8 +67,7 @@ def _terms(text: str) -> frozenset[str]:
 
 def is_multihop(question: str) -> bool:
     """Quick heuristic: is this a compositional multi-hop question?"""
-    q = f" {question.strip().lower()} "
-    return len(question.split()) >= 7 and any(s in q for s in _MULTI_HOP_SIGNALS)
+    return detect_multihop(question)
 
 
 def extract_intents(question: str) -> list[Intent]:

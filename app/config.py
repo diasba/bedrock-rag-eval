@@ -27,6 +27,9 @@ EMBEDDING_MODEL: str = os.getenv(
 
 # ── ChromaDB ───────────────────────────────────────────────────────────
 CHROMA_COLLECTION: str = os.getenv("CHROMA_COLLECTION", "bedrock_docs")
+CHROMA_HOST: str = os.getenv("CHROMA_HOST", "")
+CHROMA_PORT: int = int(os.getenv("CHROMA_PORT", "8000"))
+CHROMA_SSL: bool = os.getenv("CHROMA_SSL", "false").lower() in ("true", "1", "yes")
 
 # ── Query / Retrieval ─────────────────────────────────────────────────
 TOP_K: int = int(os.getenv("TOP_K", "4"))
