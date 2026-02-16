@@ -259,11 +259,11 @@ python3 scripts/run_eval.py \
 
 From `reports/eval_report.md`:
 
-- Context Precision: **0.6208**
-- Context Recall: **0.6417**
-- Faithfulness: **0.8083**
-- Answer Relevancy: **0.5699**
-- Answer Correctness: **0.6831**
+- Context Precision: **0.6111**
+- Context Recall: **0.7028**
+- Faithfulness: **0.8500**
+- Answer Relevancy: **0.6104**
+- Answer Correctness: **0.7061**
 
 ---
 
@@ -278,20 +278,20 @@ From `reports/eval_report.md`:
 
 ## Known Limitations
 
-1. Chroma runs in-process in the API container (single-service compose); not a separate DB service.
-2. Judge metrics can vary run-to-run because they depend on LLM scoring.
-3. Fixed-size chunking can still split semantic units.
-4. Some evaluation rows remain sensitive to retrieval ranking noise.
-5. Agentic research endpoint (extra credit) is not implemented.
+1. Judge metrics can vary run-to-run because they depend on LLM scoring.
+2. Fixed-size chunking with markdown-header splitting can still break mid-paragraph for very dense sections.
+3. Some evaluation rows remain sensitive to retrieval ranking noise (e.g., Q15 runtime-metrics regression).
+4. Agentic research endpoint (extra credit) is not implemented.
+5. BM25 index is rebuilt fully on each ingest; large corpora may cause a brief delay.
 
 ---
 
 ## What I Would Improve With More Time
 
-1. Add semantic/section-aware chunking to improve context precision.
-2. Add stronger query decomposition + rerank fusion for hard multi-hop queries.
-3. Add a minimal `/research` agent endpoint (sub-question planning + synthesis).
-4. Add deterministic CI pipeline for regression checks (ingest smoke + eval smoke).
+1. Add parent-document retrieval: store small chunks for matching but pass the full parent section as context to the LLM.
+2. Add LLM-based query rewriting (HyDE or step-back prompting) for ambiguous or complex questions.
+3. Add a minimal `/research` agent endpoint (sub-question planning + multi-step synthesis).
+4. Add deterministic CI pipeline for regression checks (ingest smoke + eval smoke on every PR).
 
 ---
 
