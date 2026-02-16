@@ -1,4 +1,4 @@
-"""FastAPI application — endpoints: /health, /ingest, /query, /query/stream, /ui."""
+"""FastAPI application — endpoints: /health, /ingest, /query, /query/stream, /agent/research, /ui."""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from starlette.responses import FileResponse, StreamingResponse
 
 from app.config import (
@@ -141,6 +141,51 @@ class QueryResponse(BaseModel):
     max_score: float | None = None
     gate_reason: str | None = None
     cache_hit: bool | None = None
+
+
+# ── Agent schemas ──────────────────────────────────────────────────────
+
+class AgentResearchRequest(BaseModel):
+    topic: str
+    max_subquestions: int = 5
+    include_context: bool = False
+
+
+class AgentFindingResponse(BaseModel):
+    subquestion: str
+    answer: str | None
+    citations: list[CitationResponse]
+    status: str  # "answered" | "gap" | "answered_after_retry"
+    contexts: list[RetrievedChunkResponse] = Field(default_factory=list)
+    # retry tracking
+    attempts: int = 1
+    retried_subquestion: str | None = None
+    retry_resolved: bool = False
+    # evidence quality
+    confidence: float = 0.0
+    citation_count: int = 0
+    unique_docs: int = 0
+
+
+class AgentGapResponse(BaseModel):
+    subquestion: str
+    reason: str  # "no_answer" | "low_evidence"
+
+
+class AgentConflictResponse(BaseModel):
+    finding_a: str
+    finding_b: str
+    reason: str
+
+
+class AgentResearchResponse(BaseModel):
+    topic: str
+    subquestions: list[str]
+    findings: list[AgentFindingResponse]
+    gaps: list[AgentGapResponse]
+    final_summary: str
+    stats: dict[str, object]
+    possible_conflicts: list[AgentConflictResponse] = Field(default_factory=list)
 
 
 # ── Endpoints ──────────────────────────────────────────────────────────
@@ -662,6 +707,61 @@ def query_stream(body: QueryRequest):
         event_generator(),
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
+# ── Agent: Auto-Research ───────────────────────────────────────────────
+
+@app.post("/agent/research", response_model=AgentResearchResponse)
+def agent_research(body: AgentResearchRequest) -> AgentResearchResponse:
+    """Auto-research agent: decompose a topic into sub-questions, query the
+    RAG pipeline for each, and synthesise a structured mini-report."""
+    from app.agent.research import run_research
+
+    logger.info("Agent research: topic=%r, max_subquestions=%d", body.topic, body.max_subquestions)
+    result = run_research(
+        topic=body.topic,
+        max_subquestions=body.max_subquestions,
+        include_context=body.include_context,
+    )
+
+    return AgentResearchResponse(
+        topic=result.topic,
+        subquestions=result.subquestions,
+        findings=[
+            AgentFindingResponse(
+                subquestion=f.subquestion,
+                answer=f.answer,
+                citations=[
+                    CitationResponse(**c) for c in f.citations
+                ],
+                status=f.status,
+                contexts=[
+                    RetrievedChunkResponse(**ctx) for ctx in f.contexts
+                ],
+                attempts=f.attempts,
+                retried_subquestion=f.retried_subquestion,
+                retry_resolved=f.retry_resolved,
+                confidence=f.confidence,
+                citation_count=f.citation_count,
+                unique_docs=f.unique_docs,
+            )
+            for f in result.findings
+        ],
+        gaps=[
+            AgentGapResponse(subquestion=g.subquestion, reason=g.reason)
+            for g in result.gaps
+        ],
+        final_summary=result.final_summary,
+        stats=result.stats,
+        possible_conflicts=[
+            AgentConflictResponse(
+                finding_a=c.finding_a,
+                finding_b=c.finding_b,
+                reason=c.reason,
+            )
+            for c in result.possible_conflicts
+        ],
     )
 
 
