@@ -413,8 +413,8 @@ def test_retrieval_pdf_balancing():
     assert len(results) <= 4
 
 
-def test_retrieval_pdf_bypass_for_iam_query():
-    """For IAM/policy queries, PDF cap should NOT apply."""
+def test_retrieval_pdf_cap_is_generic_for_mixed_sources():
+    """When text and PDF both exist, retrieval keeps PDF capped to avoid dominance."""
     from app.db.chroma import query_chunks
 
     pdf_chunks = [
@@ -445,12 +445,11 @@ def test_retrieval_pdf_bypass_for_iam_query():
         )
 
     pdf_count = sum(1 for r in results if r.content_type == "pdf")
-    # IAM query — PDF cap is bypassed, so more than 1 PDF is allowed
-    assert pdf_count >= 2, f"Expected ≥2 PDF chunks for IAM query, got {pdf_count}"
+    assert pdf_count <= 1, f"Expected max 1 PDF chunk, got {pdf_count}"
 
 
-def test_retrieval_definition_query_fetches_deeper():
-    """Definition query should request a deeper candidate pool."""
+def test_retrieval_uses_widened_candidate_pool():
+    """Vector retrieval should always query a widened pool above top_k."""
     from app.db.chroma import query_chunks
 
     fake_results = {
@@ -469,7 +468,7 @@ def test_retrieval_definition_query_fetches_deeper():
         _ = query_chunks([0.1] * 384, top_k=4, question="What is Amazon Bedrock?")
 
     called_kwargs = mock_coll.return_value.query.call_args.kwargs
-    assert called_kwargs["n_results"] >= 50
+    assert called_kwargs["n_results"] >= 24
 
 
 def test_retrieval_runtime_metrics_prefers_txt_and_caps_pdf():

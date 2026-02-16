@@ -1,6 +1,6 @@
 # RAG Evaluation Report
 
-Generated: 2026-02-16 14:16:23
+Generated: 2026-02-16 15:02:41
 
 Dataset: 20 questions
 
@@ -19,21 +19,21 @@ Metrics source: **judge**
 
 | Metric | Score |
 |---|---|
-| Context Precision | 0.6556 |
-| Context Recall | 0.7750 |
+| Context Precision | 0.6056 |
+| Context Recall | 0.7250 |
 | Faithfulness | 0.8083 |
-| Answer Relevancy | 0.5941 |
-| Answer Correctness | 0.7300 |
+| Answer Relevancy | 0.5981 |
+| Answer Correctness | 0.7267 |
 
 ## Answerable-Only Scores
 
 | Metric | Score |
 |---|---|
-| Context Precision | 0.8195 |
-| Context Recall | 0.9688 |
+| Context Precision | 0.7570 |
+| Context Recall | 0.9062 |
 | Faithfulness | 0.9479 |
-| Answer Relevancy | 0.7426 |
-| Answer Correctness | 0.6625 |
+| Answer Relevancy | 0.7477 |
+| Answer Correctness | 0.6584 |
 
 ## No-Answer Contract
 
@@ -46,18 +46,18 @@ Metrics source: **judge**
 ### factual (7 questions)
 
 - Context Precision: 0.9127
-- Context Recall: 1.0000
+- Context Recall: 0.8571
 - Faithfulness: 1.0000
 - Answer Relevancy: 0.8356
 - Answer Correctness: 0.6389
 
 ### multi_hop (4 questions)
 
-- Context Precision: 0.8750
+- Context Precision: 0.6250
 - Context Recall: 0.8750
 - Faithfulness: 0.7917
-- Answer Relevancy: 0.6260
-- Answer Correctness: 0.7486
+- Answer Relevancy: 0.6471
+- Answer Correctness: 0.7493
 
 ### no_answer (4 questions)
 
@@ -72,8 +72,8 @@ Metrics source: **judge**
 - Context Precision: 0.6445
 - Context Recall: 1.0000
 - Faithfulness: 1.0000
-- Answer Relevancy: 0.7058
-- Answer Correctness: 0.6268
+- Answer Relevancy: 0.7051
+- Answer Correctness: 0.6129
 
 ## Per-Question Breakdown
 
@@ -83,15 +83,15 @@ Metrics source: **judge**
 | 2 | Do you need model access permissions before using … | factual | 0.64 | 1.00 | 1.00 | 0.90 | 0.47 |
 | 3 | Where can you find supported models for Bedrock? | factual | 1.00 | 1.00 | 1.00 | 0.87 | 0.66 |
 | 4 | What is a Bedrock Knowledge Base used for? | factual | 0.75 | 1.00 | 1.00 | 1.00 | 0.73 |
-| 5 | What does chunking do in a knowledge base pipeline… | factual | 1.00 | 1.00 | 1.00 | 0.66 | 0.58 |
+| 5 | What does chunking do in a knowledge base pipeline… | factual | 1.00 | 0.00 | 1.00 | 0.66 | 0.58 |
 | 6 | What is the purpose of RetrieveAndGenerate? | factual | 1.00 | 1.00 | 1.00 | 0.64 | 0.57 |
-| 7 | What is enabled by default with the correct AWS Ma… | multi_hop | 1.00 | 1.00 | 0.50 | 0.47 | 0.79 |
-| 8 | In fixed-size chunking, what two settings define c… | multi_hop | 0.50 | 1.00 | 1.00 | 0.83 | 0.77 |
+| 7 | What is enabled by default with the correct AWS Ma… | multi_hop | 0.00 | 1.00 | 0.50 | 0.47 | 0.79 |
+| 8 | In fixed-size chunking, what two settings define c… | multi_hop | 0.50 | 1.00 | 1.00 | 0.91 | 0.84 |
 | 9 | In Amazon Bedrock, which feature searches your dat… | multi_hop | 1.00 | 1.00 | 1.00 | 0.44 | 0.75 |
-| 10 | For Amazon Bedrock inference, which endpoint is us… | multi_hop | 1.00 | 0.50 | 0.67 | 0.77 | 0.70 |
+| 10 | For Amazon Bedrock inference, which endpoint is us… | multi_hop | 1.00 | 0.50 | 0.67 | 0.77 | 0.62 |
 | 11 | Can Bedrock KB do RAG-style retrieval before gener… | paraphrase | 0.81 | 1.00 | 1.00 | 0.73 | 0.70 |
 | 12 | How do I check token count before sending a prompt… | paraphrase | 1.00 | 1.00 | 1.00 | 0.57 | 0.40 |
-| 13 | Is there an API for streaming model responses? | paraphrase | 0.42 | 1.00 | 1.00 | 0.65 | 0.65 |
+| 13 | Is there an API for streaming model responses? | paraphrase | 0.42 | 1.00 | 1.00 | 0.64 | 0.58 |
 | 14 | Can I directly apply a guardrail through an API ca… | paraphrase | 1.00 | 1.00 | 1.00 | 0.79 | 0.72 |
 | 15 | Name at least 5 runtime invocation metrics Bedrock… | paraphrase | 0.00 | 1.00 | 1.00 | 0.80 | 0.65 |
 | 16 | In Amazon Bedrock inference, which service tier is… | factual | 1.00 | 1.00 | 1.00 | 0.78 | 0.72 |
@@ -103,6 +103,39 @@ Metrics source: **judge**
 ## Failure Analysis
 
 ### Failure Case 1
+
+**Question:** What is enabled by default with the correct AWS Marketplace permissions, and which table shows model support by AWS Region?
+
+**Category:** multi_hop
+
+**Ground Truth:** Access to all Amazon Bedrock foundation models is enabled by default with the correct AWS Marketplace permissions. Model support by AWS Region is shown in the model support by AWS Region table.
+
+**Predicted:** Access to all Amazon Bedrock foundation models is enabled by default with the correct AWS Marketplace permissions [Chunk 1]. The table showing model support by AWS Region is found in the "Models and Regions" documentation [Chunk 2].
+
+**Average Score:** 0.5512
+
+**Analysis:**
+
+- Low context precision — retrieved chunks were not relevant to this question.
+- Low answer relevancy — the generated answer does not address the question directly.
+
+### Failure Case 2
+
+**Question:** What does chunking do in a knowledge base pipeline?
+
+**Category:** factual
+
+**Ground Truth:** Chunking splits documents into smaller segments so they can be efficiently embedded and retrieved during a query.
+
+**Predicted:** Chunking splits each document in a data source into smaller subdivisions (chunks) based on token count, overlap tokens, or semantic content to improve retrieval accuracy [Chunk 1][Chunk 4].
+
+**Average Score:** 0.6489
+
+**Analysis:**
+
+- Low context recall — the retrieval missed key chunks needed to answer.
+
+### Failure Case 3
 
 **Question:** Name at least 5 runtime invocation metrics Bedrock publishes (CloudWatch)
 
@@ -118,38 +151,6 @@ Metrics source: **judge**
 
 - Low context precision — retrieved chunks were not relevant to this question.
 
-### Failure Case 2
-
-**Question:** For Amazon Bedrock inference, which endpoint is used for InvokeModel calls, and what controls model inference usage?
-
-**Category:** multi_hop
-
-**Ground Truth:** InvokeModel calls use the bedrock-runtime.{region}.amazonaws.com endpoint. Model inference in Amazon Bedrock is controlled by quotas on token usage.
-
-**Predicted:** Use the region-specific endpoint `bedrock-runtime.{region}.amazonaws.com` for InvokeModel calls [Chunk 1]. Model inference usage is controlled via inference parameters [Chunk 2] and access to service tiers [Chunk 3].
-
-**Average Score:** 0.7262
-
-**Analysis:**
-
-- Score is low across multiple metrics — likely a combination of retrieval and generation issues.
-
-### Failure Case 3
-
-**Question:** Is there an API for streaming model responses?
-
-**Category:** paraphrase
-
-**Ground Truth:** Yes, Amazon Bedrock supports response streaming through the InvokeModelWithResponseStream and ConverseStream API operations. The field 'responseStreamingSupported' in the API documentation indicates whether a specific model supports streaming.
-
-**Predicted:** Yes, the supported streaming APIs are **ConverseStream** and **InvokeModelWithResponseStream** [Chunk 4]. For knowledge bases, use **RetrieveAndGenerateStream** [Chunk 1].
-
-**Average Score:** 0.7424
-
-**Analysis:**
-
-- Low context precision — retrieved chunks were not relevant to this question.
-
 ### No-Answer Behavior Summary
 
 - True negatives (correct null): 4/4
@@ -157,8 +158,8 @@ Metrics source: **judge**
 
 ## Correctness Score Distribution
 
-- Distinct answer-correctness values (answerable rows): 0.40, 0.47, 0.57, 0.58, 0.65, 0.66, 0.70, 0.72, 0.73, 0.75, 0.77, 0.79
-- Min/Median/Max: 0.4044 / 0.7042 / 0.7852
+- Distinct answer-correctness values (answerable rows): 0.40, 0.47, 0.57, 0.58, 0.62, 0.65, 0.66, 0.70, 0.72, 0.73, 0.75, 0.79, 0.84
+- Min/Median/Max: 0.4044 / 0.7042 / 0.8417
 
 ## Metric Interpretation Notes
 

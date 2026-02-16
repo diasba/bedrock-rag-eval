@@ -52,8 +52,8 @@ MULTIHOP_KEYWORD_BOOST: float = float(os.getenv("MULTIHOP_KEYWORD_BOOST", "0.45"
 
 # ── Hybrid Retrieval ───────────────────────────────────────────────────
 HYBRID_ENABLED: bool = os.getenv("HYBRID_ENABLED", "true").lower() in ("true", "1", "yes")
-HYBRID_VECTOR_WEIGHT: float = float(os.getenv("HYBRID_VECTOR_WEIGHT", "0.7"))
-HYBRID_KEYWORD_WEIGHT: float = float(os.getenv("HYBRID_KEYWORD_WEIGHT", "0.3"))
+HYBRID_VECTOR_WEIGHT: float = float(os.getenv("HYBRID_VECTOR_WEIGHT", "0.6"))
+HYBRID_KEYWORD_WEIGHT: float = float(os.getenv("HYBRID_KEYWORD_WEIGHT", "0.4"))
 
 # ── Reranking ──────────────────────────────────────────────────────────
 RERANK_ENABLED: bool = os.getenv("RERANK_ENABLED", "false").lower() in ("true", "1", "yes")

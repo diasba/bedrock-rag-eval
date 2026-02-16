@@ -73,92 +73,6 @@ _CONFIDENCE_STOPWORDS = {
 # when retrieval confidence is low by BOTH similarity and lexical overlap.
 LOW_CONFIDENCE_SCORE_MAX = 0.55
 LOW_CONFIDENCE_OVERLAP_MAX = 0.30
-_RUNTIME_METRICS_QUERY_RE = re.compile(
-    r"\b(runtime metrics?|invocationlatency|invocations?|cloudwatch)\b",
-    re.IGNORECASE,
-)
-
-
-def _per_doc_limit_for_question(question: str, base_limit: int, top_k: int) -> int:
-    """Tune per-doc diversity for known query patterns.
-
-    Runtime metrics questions need multiple adjacent chunks from one doc,
-    while service-tier default questions often need two nearby chunks.
-    """
-    q = question.strip().lower()
-    limit = base_limit
-    if _RUNTIME_METRICS_QUERY_RE.search(q):
-        limit = max(limit, min(max(top_k, 2), 4))
-    if re.search(r"\bservice[_ ]?tier\b", q) and re.search(r"\b(default|missing)\b", q):
-        limit = max(limit, 2)
-    return limit
-
-
-def _prioritize_runtime_metric_chunks(
-    question: str,
-    chunks: list[RetrievedChunk],
-    top_k: int,
-) -> list[RetrievedChunk]:
-    """For runtime-metrics queries, prioritize chunks from the metrics TXT doc."""
-    if not _RUNTIME_METRICS_QUERY_RE.search(question):
-        return chunks[:top_k]
-
-    runtime_doc_id = "txt/bedrock_runtime_metrics.txt"
-    preferred = [c for c in chunks if c.doc_id == runtime_doc_id]
-    if not preferred:
-        return chunks[:top_k]
-
-    # If retrieval missed some sibling chunks from the metrics doc,
-    # pull them directly to complete the list-style answer context.
-    if len(preferred) < top_k:
-        try:
-            siblings = get_collection().get(
-                where={"doc_id": runtime_doc_id},
-                include=["documents", "metadatas"],
-            )
-            existing_ids = {c.chunk_id for c in preferred}
-            sibling_chunks: list[RetrievedChunk] = []
-            for sid, sdoc, smeta in zip(
-                siblings.get("ids", []),
-                siblings.get("documents", []),
-                siblings.get("metadatas", []),
-            ):
-                if sid in existing_ids:
-                    continue
-                sibling_chunks.append(
-                    RetrievedChunk(
-                        chunk_id=sid,
-                        doc_id=smeta.get("doc_id", runtime_doc_id),
-                        text=sdoc,
-                        score=max((preferred[-1].score if preferred else 0.4) - 0.05, 0.0),
-                        source_path=smeta.get("source_path", ""),
-                        content_type=smeta.get("content_type", "txt"),
-                    ),
-                )
-            sibling_chunks.sort(
-                key=lambda c: (
-                    int(c.chunk_id.rsplit("#", 1)[-1]) if "#" in c.chunk_id else 0,
-                    c.chunk_id,
-                ),
-            )
-            for sibling in sibling_chunks:
-                preferred.append(sibling)
-                existing_ids.add(sibling.chunk_id)
-                if len(preferred) >= top_k:
-                    break
-        except Exception:  # noqa: BLE001
-            pass
-
-    selected: list[RetrievedChunk] = []
-    seen: set[str] = set()
-    for chunk in preferred + chunks:
-        if chunk.chunk_id in seen:
-            continue
-        selected.append(chunk)
-        seen.add(chunk.chunk_id)
-        if len(selected) >= top_k:
-            break
-    return selected
 
 
 # ── Schemas ────────────────────────────────────────────────────────────
@@ -386,11 +300,7 @@ def query(body: QueryRequest) -> QueryResponse:
             dense_fetch_k = max(body.top_k * (3 if is_multi_variant else 1), body.top_k)
         candidate_top_k = dense_fetch_k
         base_per_doc_limit = 1 if is_multi_variant else MAX_CHUNKS_PER_DOC
-        per_doc_limit = _per_doc_limit_for_question(
-            body.question,
-            base_per_doc_limit,
-            body.top_k,
-        )
+        per_doc_limit = base_per_doc_limit
 
         dense_runs: list[list[RetrievedChunk]] = []
         for variant in query_variants:
@@ -428,7 +338,7 @@ def query(body: QueryRequest) -> QueryResponse:
         if is_multi_variant:
             retrieved = select_multi_hop_contexts(body.question, retrieved, top_k=body.top_k)
         else:
-            retrieved = _prioritize_runtime_metric_chunks(body.question, retrieved, body.top_k)
+            retrieved = retrieved[:body.top_k]
 
     retrieved_count = len(retrieved)
     max_score = max((chunk.score for chunk in retrieved), default=None)
@@ -675,11 +585,7 @@ def query_stream(body: QueryRequest):
                 dense_fetch_k = max(body.top_k * (3 if is_multi_variant else 1), body.top_k)
             candidate_top_k = dense_fetch_k
             base_per_doc_limit = 1 if is_multi_variant else MAX_CHUNKS_PER_DOC
-            per_doc_limit = _per_doc_limit_for_question(
-                body.question,
-                base_per_doc_limit,
-                body.top_k,
-            )
+            per_doc_limit = base_per_doc_limit
 
             dense_runs: list[list[RetrievedChunk]] = []
             for variant in query_variants:
@@ -715,7 +621,7 @@ def query_stream(body: QueryRequest):
             if is_multi_variant:
                 retrieved = select_multi_hop_contexts(body.question, retrieved, top_k=body.top_k)
             else:
-                retrieved = _prioritize_runtime_metric_chunks(body.question, retrieved, body.top_k)
+                retrieved = retrieved[:body.top_k]
 
         # 4. No-answer gate (empty retrieval) ─────────────────────
         if not retrieved:

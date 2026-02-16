@@ -39,6 +39,29 @@ def _snap_chunk_end(text: str, start: int, target_end: int) -> int:
     return target_end
 
 
+def _split_markdown_sections(text: str) -> list[str]:
+    """Split Markdown into header-bounded sections before fixed chunking."""
+    sections: list[str] = []
+    current: list[str] = []
+
+    for raw in text.splitlines():
+        line = raw.rstrip()
+        if line.lstrip().startswith("#"):
+            if current:
+                section = "\n".join(current).strip()
+                if section:
+                    sections.append(section)
+                current = []
+        current.append(line)
+
+    if current:
+        section = "\n".join(current).strip()
+        if section:
+            sections.append(section)
+
+    return sections if sections else [text]
+
+
 def chunk_text(
     text: str,
     doc_id: str,
@@ -55,41 +78,45 @@ def chunk_text(
         return []
 
     chunks: list[Chunk] = []
-    start = 0
     idx = 0
-
     stride = max(1, chunk_size - chunk_overlap)
-    n = len(text)
+    sections = _split_markdown_sections(text) if content_type == "md" else [text]
 
-    while start < n:
-        target_end = min(start + chunk_size, n)
-        end = _snap_chunk_end(text, start, target_end)
-        if end <= start:
-            end = min(start + chunk_size, n)
-
-        segment = text[start:end].strip()
-        if not segment:
-            start += stride
+    for section in sections:
+        n = len(section)
+        if n == 0:
             continue
 
-        chunk_id = f"{doc_id}#{idx:05d}"
-        chunks.append(
-            Chunk(
-                chunk_id=chunk_id,
-                doc_id=doc_id,
-                text=segment,
-                chunk_index=idx,
-                source_path=source_path,
-                content_type=content_type,
-            )
-        )
-        idx += 1
+        start = 0
+        while start < n:
+            target_end = min(start + chunk_size, n)
+            end = _snap_chunk_end(section, start, target_end)
+            if end <= start:
+                end = min(start + chunk_size, n)
 
-        if end >= n:
-            break
-        next_start = max(end - chunk_overlap, start + 1)
-        if next_start <= start:
-            next_start = start + stride
-        start = next_start
+            segment = section[start:end].strip()
+            if not segment:
+                start += stride
+                continue
+
+            chunk_id = f"{doc_id}#{idx:05d}"
+            chunks.append(
+                Chunk(
+                    chunk_id=chunk_id,
+                    doc_id=doc_id,
+                    text=segment,
+                    chunk_index=idx,
+                    source_path=source_path,
+                    content_type=content_type,
+                )
+            )
+            idx += 1
+
+            if end >= n:
+                break
+            next_start = max(end - chunk_overlap, start + 1)
+            if next_start <= start:
+                next_start = start + stride
+            start = next_start
 
     return chunks

@@ -20,6 +20,10 @@ _MULTI_HOP_RE = re.compile(
     r"\b(and|both|together|vs|versus|compared|complementary|influence|affect)\b",
     re.IGNORECASE,
 )
+_LIST_STYLE_RE = re.compile(
+    r"\b(list|name|enumerate|at least|what are|which|metrics|fields|types|steps|limits?)\b",
+    re.IGNORECASE,
+)
 _BOILERPLATE_HINTS = (
     "table of contents",
     "was this page helpful",
@@ -27,6 +31,15 @@ _BOILERPLATE_HINTS = (
     "next steps",
     "related resources",
     "learn more",
+)
+_TOKEN_RE = re.compile(r"[a-zA-Z0-9]+")
+_QUERY_STOPWORDS = frozenset(
+    "a an the is are was were be been being have has had do does did will "
+    "would shall should may might can could of in to for on with at by from "
+    "as into through during before after above below between and but or nor "
+    "not no so if then than too very just about also each how all both few "
+    "more most other some such what which who whom this that these those am "
+    "amazon aws bedrock".split()
 )
 
 
@@ -135,6 +148,45 @@ def heartbeat() -> bool:
         return False
 
 
+def _query_terms(question: str) -> set[str]:
+    return {
+        t
+        for t in _TOKEN_RE.findall(question.lower())
+        if len(t) > 2 and t not in _QUERY_STOPWORDS
+    }
+
+
+def _text_terms(text: str) -> set[str]:
+    return {
+        t
+        for t in _TOKEN_RE.findall(text.lower())
+        if len(t) > 2
+    }
+
+
+def _lexical_overlap_score(question_terms: set[str], text: str) -> float:
+    if not question_terms:
+        return 0.0
+    overlap = len(question_terms & _text_terms(text))
+    return overlap / len(question_terms)
+
+
+def _is_list_style_query(question: str) -> bool:
+    q = question.strip()
+    if not q:
+        return False
+    return bool(_LIST_STYLE_RE.search(q))
+
+
+def _looks_structured_chunk(text: str) -> bool:
+    if not text:
+        return False
+    if text.count("\n") >= 4:
+        return True
+    lower = text.lower()
+    return lower.count("metric:") >= 2 or lower.count("description:") >= 2
+
+
 def query_chunks(
     query_embedding: list[float],
     top_k: int = TOP_K,
@@ -146,23 +198,18 @@ def query_chunks(
 
     Returns up to *top_k* chunks, re-ranked to ensure diversity across docs.
     Scores are cosine distances (lower = more similar); we convert to similarity.
-
-    Content-type balancing: when txt/md candidates exist, PDF chunks are
-    capped at 1 — unless the query mentions IAM/policy/role keywords
-    (which are typically PDF-only topics).
     """
     collection = get_collection()
 
     # Fetch more than top_k to allow for diversity and filtering.
     fetch_k = max(top_k * 4, 24)
     multi_hop_query = bool(_MULTI_HOP_RE.search(question)) and len(question.split()) >= 7
+    list_style_query = _is_list_style_query(question)
     if multi_hop_query:
         fetch_k = max(fetch_k, top_k * 10, 60)
-    q = question.strip().lower()
-    if "what is" in q and "amazon bedrock" in q:
-        # Definition queries are broad; fetch deeper so the canonical
-        # "what-is-bedrock" page is more likely to be in candidates.
-        fetch_k = max(fetch_k, 50)
+    if list_style_query:
+        # List-style prompts often need multiple adjacent chunks from one doc.
+        fetch_k = max(fetch_k, top_k * 8, 48)
 
     results = collection.query(
         query_embeddings=[query_embedding],
@@ -198,123 +245,20 @@ def query_chunks(
     if cleaned_candidates:
         candidates = cleaned_candidates
 
-    # Minimal definition-query boost: prioritize "what-is-bedrock" docs
-    # when the user asks "What is Amazon Bedrock?".
-    if "what is" in q and "amazon bedrock" in q:
-        for chunk in candidates:
-            if "what-is-bedrock" in chunk.doc_id:
-                chunk.score += 0.10
-        candidates.sort(key=lambda c: c.score, reverse=True)
+    # Generic lexical adjustment to reduce dense-only drift.
+    q_terms = _query_terms(question)
+    for chunk in candidates:
+        overlap = _lexical_overlap_score(q_terms, chunk.text)
+        chunk.score += 0.14 * overlap
+        if list_style_query and _looks_structured_chunk(chunk.text):
+            chunk.score += 0.05
 
-    # Service-tier default query boost:
-    # prioritize chunks that explicitly mention the default routing rule.
-    service_tier_default_query = bool(
-        re.search(r"\bservice[_ ]?tier\b", q)
-        and re.search(r"\b(default|missing)\b", q)
-    )
-    if service_tier_default_query:
-        for chunk in candidates:
-            text_l = chunk.text.lower()
-            has_service_tier = "service_tier" in text_l or "service tier" in text_l
-            if (
-                "by default" in text_l
-                and "standard tier" in text_l
-                and "parameter is missing" in text_l
-                and has_service_tier
-            ):
-                chunk.score += 0.25
-            elif has_service_tier and "standard tier" in text_l:
-                chunk.score += 0.08
-        candidates.sort(key=lambda c: c.score, reverse=True)
-
-    # Runtime-metrics query handling:
-    # - ensure multiple txt chunks when available (metrics lists span chunks)
-    # - cap pdf chunks at max 1
-    runtime_query = bool(
-        re.search(
-            r"\b(runtime metrics?|invocationlatency|invocations?|cloudwatch)\b",
-            question,
-            re.IGNORECASE,
-        )
-    )
-    if runtime_query:
-        runtime_results: list[RetrievedChunk] = []
-        doc_counts: dict[str, int] = {}
-        pdf_count = 0
-        seen_ids: set[str] = set()
-        runtime_doc_cap = max(max_per_doc, min(top_k, 4))
-        target_txt_chunks = min(runtime_doc_cap, top_k)
-
-        txt_candidate = next((c for c in candidates if c.content_type == "txt"), None)
-        if txt_candidate is not None:
-            runtime_results.append(txt_candidate)
-            doc_counts[txt_candidate.doc_id] = 1
-            seen_ids.add(txt_candidate.chunk_id)
-
-            # Pull adjacent txt chunks from the same doc when available.
-            # This helps complete long metric lists split across chunks.
-            try:
-                siblings = collection.get(
-                    where={"doc_id": txt_candidate.doc_id},
-                    include=["documents", "metadatas"],
-                )
-                sibling_items: list[RetrievedChunk] = []
-                for sid, sdoc, smeta in zip(
-                    siblings.get("ids", []),
-                    siblings.get("documents", []),
-                    siblings.get("metadatas", []),
-                ):
-                    if sid == txt_candidate.chunk_id:
-                        continue
-                    sibling_items.append(
-                        RetrievedChunk(
-                            chunk_id=sid,
-                            doc_id=smeta.get("doc_id", txt_candidate.doc_id),
-                            text=sdoc,
-                            score=max(txt_candidate.score - 0.05, 0.0),
-                            source_path=smeta.get("source_path", ""),
-                            content_type=smeta.get("content_type", "txt"),
-                        )
-                    )
-                sibling_items.sort(
-                    key=lambda c: (
-                        int(c.chunk_id.rsplit("#", 1)[-1]) if "#" in c.chunk_id else 0,
-                        c.chunk_id,
-                    ),
-                )
-                for sibling in sibling_items:
-                    if len(runtime_results) >= target_txt_chunks:
-                        break
-                    if doc_counts.get(txt_candidate.doc_id, 0) >= runtime_doc_cap:
-                        break
-                    if sibling.chunk_id in seen_ids:
-                        continue
-                    runtime_results.append(sibling)
-                    seen_ids.add(sibling.chunk_id)
-                    doc_counts[txt_candidate.doc_id] = doc_counts.get(txt_candidate.doc_id, 0) + 1
-            except Exception:  # noqa: BLE001
-                pass
-
-        for chunk in candidates:
-            if chunk.chunk_id in seen_ids:
-                continue
-            count = doc_counts.get(chunk.doc_id, 0)
-            if count >= runtime_doc_cap:
-                continue
-            if chunk.content_type == "pdf":
-                if pdf_count >= 1:
-                    continue
-                pdf_count += 1
-            runtime_results.append(chunk)
-            seen_ids.add(chunk.chunk_id)
-            doc_counts[chunk.doc_id] = count + 1
-            if len(runtime_results) >= top_k:
-                break
-        return runtime_results[:top_k]
+    candidates.sort(key=lambda c: c.score, reverse=True)
 
     # Apply diversity: max *max_per_doc* chunks per doc_id.
-    # Multi-hop questions need breadth across documents, so force 1/doc.
     effective_max_per_doc = 1 if multi_hop_query else max_per_doc
+    if list_style_query:
+        effective_max_per_doc = max(effective_max_per_doc, min(top_k, 3))
     doc_counts: dict[str, int] = {}
     diverse_results: list[RetrievedChunk] = []
 
@@ -323,19 +267,14 @@ def query_chunks(
         if count < effective_max_per_doc:
             diverse_results.append(chunk)
             doc_counts[chunk.doc_id] = count + 1
-        if len(diverse_results) >= top_k * 2:  # gather extra for balancing
+        if len(diverse_results) >= top_k * 3:
             break
 
     # ── Content-type balancing ────────────────────────────────────────
-    # If txt/md candidates exist, cap PDF chunks to MAX_PDF unless the
-    # query is about IAM / policy / role (typically PDF-only content).
-    _IAM_PATTERN = re.compile(r"\b(iam|policy|policies|role|roles)\b", re.IGNORECASE)
-    iam_query = bool(_IAM_PATTERN.search(question))
-
     has_text_md = any(c.content_type in ("txt", "md") for c in diverse_results)
     MAX_PDF = 1
 
-    if has_text_md and not iam_query:
+    if has_text_md:
         balanced: list[RetrievedChunk] = []
         pdf_count = 0
         for chunk in diverse_results:

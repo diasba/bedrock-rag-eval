@@ -35,11 +35,11 @@
     "md_count": 914
   },
   "aggregate": {
-    "context_precision": 0.6556,
-    "context_recall": 0.775,
+    "context_precision": 0.6056,
+    "context_recall": 0.725,
     "faithfulness": 0.8083,
-    "answer_relevancy": 0.5941,
-    "answer_correctness": 0.73
+    "answer_relevancy": 0.5981,
+    "answer_correctness": 0.7267
   },
   "per_question": [
     {
@@ -56,7 +56,7 @@
     {
       "question": "Do you need model access permissions before using some Bedrock models?",
       "category": "factual",
-      "predicted_answer": "Yes, you need permissions for `bedrock:InvokeModel` or `bedrock:InvokeModelWithResponseStream` actions to use Bedrock models, and access to third-party models requires programmatic access management [Chunk 1][Chunk 2][Chunk 3][Chunk 4].",
+      "predicted_answer": "Yes, you need permissions for `bedrock:InvokeModel` or `bedrock:InvokeModelWithResponseStream` actions to use Bedrock models, and access to third-party models requires programmatic approval [Chunk 1][Chunk 2][Chunk 3][Chunk 4].",
       "ground_truth_answer": "Yes, you need to request and be granted model access before you can use foundation models in Amazon Bedrock.",
       "context_precision": 0.6389,
       "context_recall": 1.0,
@@ -78,7 +78,7 @@
     {
       "question": "What is a Bedrock Knowledge Base used for?",
       "category": "factual",
-      "predicted_answer": "A Bedrock Knowledge Base is used to integrate proprietary information into generative-AI applications via Retrieval Augmented Generation (RAG), improving response relevancy and accuracy by retrieving relevant data from connected data sources [Chunk 1][Chunk 4].",
+      "predicted_answer": "A Bedrock Knowledge Base is used to integrate proprietary information into generative-AI applications, enabling Retrieval Augmented Generation (RAG) to improve response relevancy and accuracy by searching and retrieving data from connected data sources [Chunk 1][Chunk 4].",
       "ground_truth_answer": "A Bedrock Knowledge Base is used to give foundation models contextual information from your private data sources for Retrieval Augmented Generation (RAG).",
       "context_precision": 0.75,
       "context_recall": 1.0,
@@ -92,7 +92,7 @@
       "predicted_answer": "Chunking splits each document in a data source into smaller subdivisions (chunks) based on token count, overlap tokens, or semantic content to improve retrieval accuracy [Chunk 1][Chunk 4].",
       "ground_truth_answer": "Chunking splits documents into smaller segments so they can be efficiently embedded and retrieved during a query.",
       "context_precision": 1.0,
-      "context_recall": 1.0,
+      "context_recall": 0.0,
       "faithfulness": 1.0,
       "answer_relevancy": 0.6639,
       "answer_correctness": 0.5805
@@ -113,7 +113,7 @@
       "category": "multi_hop",
       "predicted_answer": "Access to all Amazon Bedrock foundation models is enabled by default with the correct AWS Marketplace permissions [Chunk 1]. The table showing model support by AWS Region is found in the \"Models and Regions\" documentation [Chunk 2].",
       "ground_truth_answer": "Access to all Amazon Bedrock foundation models is enabled by default with the correct AWS Marketplace permissions. Model support by AWS Region is shown in the model support by AWS Region table.",
-      "context_precision": 1.0,
+      "context_precision": 0.0,
       "context_recall": 1.0,
       "faithfulness": 0.5,
       "answer_relevancy": 0.4708,
@@ -127,35 +127,35 @@
       "context_precision": 0.5,
       "context_recall": 1.0,
       "faithfulness": 1.0,
-      "answer_relevancy": 0.8279,
-      "answer_correctness": 0.7667
+      "answer_relevancy": 0.9112,
+      "answer_correctness": 0.8417
     },
     {
       "question": "In Amazon Bedrock, which feature searches your data to answer a query, and which feature evaluates both user inputs and model responses?",
       "category": "multi_hop",
-      "predicted_answer": "Amazon Bedrock Knowledge Bases search your data to answer a query [Chunk 1], while Bedrock Guardrails evaluate both user inputs (prompts) and model responses [Chunk 2].",
+      "predicted_answer": "Amazon Bedrock Knowledge Bases search your data to answer a query [Chunk 1]. Bedrock Guardrails evaluate both user inputs (prompts) and model responses [Chunk 2].",
       "ground_truth_answer": "When a query is made, a knowledge base searches your data to find relevant information to answer the query. Amazon Bedrock Guardrails evaluates both user inputs and model responses.",
       "context_precision": 1.0,
       "context_recall": 1.0,
       "faithfulness": 1.0,
       "answer_relevancy": 0.4362,
-      "answer_correctness": 0.7471
+      "answer_correctness": 0.75
     },
     {
       "question": "For Amazon Bedrock inference, which endpoint is used for InvokeModel calls, and what controls model inference usage?",
       "category": "multi_hop",
-      "predicted_answer": "Use the region-specific endpoint `bedrock-runtime.{region}.amazonaws.com` for InvokeModel calls [Chunk 1]. Model inference usage is controlled via inference parameters [Chunk 2] and access to service tiers [Chunk 3].",
+      "predicted_answer": "Use the region-specific `bedrock-runtime.{region}.amazonaws.com` endpoint for InvokeModel calls [Chunk 1]. Model inference usage is controlled via inference parameters [Chunk 2] and access to service tiers [Chunk 3].",
       "ground_truth_answer": "InvokeModel calls use the bedrock-runtime.{region}.amazonaws.com endpoint. Model inference in Amazon Bedrock is controlled by quotas on token usage.",
       "context_precision": 1.0,
       "context_recall": 0.5,
       "faithfulness": 0.6667,
-      "answer_relevancy": 0.7689,
-      "answer_correctness": 0.6953
+      "answer_relevancy": 0.7702,
+      "answer_correctness": 0.6202
     },
     {
       "question": "Can Bedrock KB do RAG-style retrieval before generation?",
       "category": "paraphrase",
-      "predicted_answer": "Yes, Amazon Bedrock Knowledge Bases supports RAG-style retrieval before generation using the **Retrieve** and **RetrieveAndGenerate** operations [Chunk 3][Chunk 4].",
+      "predicted_answer": "Yes, Amazon Bedrock Knowledge Bases supports RAG-style retrieval before generation using the `Retrieve` and `RetrieveAndGenerate` operations [Chunk 3][Chunk 4].",
       "ground_truth_answer": "Yes, Bedrock Knowledge Bases support RAG-style retrieval before generation through the RetrieveAndGenerate API, which first queries the knowledge base for relevant results and then uses them to augment the prompt for the foundation model.",
       "context_precision": 0.8056,
       "context_recall": 1.0,
@@ -177,13 +177,13 @@
     {
       "question": "Is there an API for streaming model responses?",
       "category": "paraphrase",
-      "predicted_answer": "Yes, the supported streaming APIs are **ConverseStream** and **InvokeModelWithResponseStream** [Chunk 4]. For knowledge bases, use **RetrieveAndGenerateStream** [Chunk 1].",
+      "predicted_answer": "Yes, the supported streaming APIs are `ConverseStream`, `InvokeModelWithResponseStream`, and `RetrieveAndGenerateStream` [Chunk 1][Chunk 4].",
       "ground_truth_answer": "Yes, Amazon Bedrock supports response streaming through the InvokeModelWithResponseStream and ConverseStream API operations. The field 'responseStreamingSupported' in the API documentation indicates whether a specific model supports streaming.",
       "context_precision": 0.4167,
       "context_recall": 1.0,
       "faithfulness": 1.0,
-      "answer_relevancy": 0.6453,
-      "answer_correctness": 0.65
+      "answer_relevancy": 0.6396,
+      "answer_correctness": 0.5805
     },
     {
       "question": "Can I directly apply a guardrail through an API call?",
@@ -193,7 +193,7 @@
       "context_precision": 1.0,
       "context_recall": 1.0,
       "faithfulness": 1.0,
-      "answer_relevancy": 0.7878,
+      "answer_relevancy": 0.7899,
       "answer_correctness": 0.7216
     },
     {
