@@ -1,6 +1,6 @@
 # RAG Evaluation Report
 
-Generated: 2026-02-16 16:50:47
+Generated: 2026-02-24 20:19:59
 
 Dataset: 20 questions
 
@@ -19,21 +19,21 @@ Metrics source: **judge**
 
 | Metric | Score |
 |---|---|
-| Context Precision | 0.6111 |
-| Context Recall | 0.7028 |
-| Faithfulness | 0.8500 |
-| Answer Relevancy | 0.6104 |
-| Answer Correctness | 0.7061 |
+| Context Precision | 0.4417 |
+| Context Recall | 0.6278 |
+| Faithfulness | 0.8754 |
+| Answer Relevancy | 0.6042 |
+| Answer Correctness | 0.7086 |
 
 ## Answerable-Only Scores
 
 | Metric | Score |
 |---|---|
-| Context Precision | 0.7639 |
-| Context Recall | 0.8160 |
-| Faithfulness | 1.0000 |
-| Answer Relevancy | 0.7631 |
-| Answer Correctness | 0.6326 |
+| Context Precision | 0.5521 |
+| Context Recall | 0.7222 |
+| Faithfulness | 0.9693 |
+| Answer Relevancy | 0.7552 |
+| Answer Correctness | 0.6358 |
 
 ## No-Answer Contract
 
@@ -45,64 +45,82 @@ Metrics source: **judge**
 
 ### factual (7 questions)
 
-- Context Precision: 0.8532
-- Context Recall: 1.0000
-- Faithfulness: 1.0000
-- Answer Relevancy: 0.8704
-- Answer Correctness: 0.6667
+- Context Precision: 0.4643
+- Context Recall: 0.7143
+- Faithfulness: 0.9298
+- Answer Relevancy: 0.8400
+- Answer Correctness: 0.6242
 
 ### multi_hop (4 questions)
 
-- Context Precision: 0.6250
-- Context Recall: 0.6250
+- Context Precision: 0.5000
+- Context Recall: 0.7500
 - Faithfulness: 1.0000
-- Answer Relevancy: 0.7390
-- Answer Correctness: 0.6383
+- Answer Relevancy: 0.7972
+- Answer Correctness: 0.7256
 
 ### no_answer (4 questions)
 
 - Context Precision: 0.0000
 - Context Recall: 0.2500
-- Faithfulness: 0.2500
+- Faithfulness: 0.5000
 - Answer Relevancy: 0.0000
 - Answer Correctness: 1.0000
 
 ### paraphrase (5 questions)
 
-- Context Precision: 0.7500
+- Context Precision: 0.7167
 - Context Recall: 0.7111
 - Faithfulness: 1.0000
-- Answer Relevancy: 0.6320
+- Answer Relevancy: 0.6030
 - Answer Correctness: 0.5803
 
 ## Per-Question Breakdown
 
 | # | Question | Category | Ctx Prec | Ctx Rec | Faith | Ans Rel | Ans Corr |
 |---|---|---|---|---|---|---|---|
-| 1 | What is Amazon Bedrock? | factual | 1.00 | 1.00 | 1.00 | 1.00 | 0.74 |
-| 2 | Do you need model access permissions before using … | factual | 0.81 | 1.00 | 1.00 | 0.59 | 0.70 |
-| 3 | Where can you find supported models for Bedrock? | factual | 1.00 | 1.00 | 1.00 | 0.82 | 0.64 |
-| 4 | What is a Bedrock Knowledge Base used for? | factual | 0.92 | 1.00 | 1.00 | 0.94 | 0.68 |
-| 5 | What does chunking do in a knowledge base pipeline… | factual | 0.92 | 1.00 | 1.00 | 0.98 | 0.63 |
-| 6 | What is the purpose of RetrieveAndGenerate? | factual | 0.83 | 1.00 | 1.00 | 0.81 | 0.59 |
+| 1 | What is Amazon Bedrock? | factual | 0.00 | 0.00 | 0.80 | 0.93 | 0.46 |
+| 2 | Do you need model access permissions before using … | factual | 0.58 | 1.00 | 1.00 | 0.75 | 0.70 |
+| 3 | Where can you find supported models for Bedrock? | factual | 1.00 | 1.00 | 1.00 | 0.82 | 0.66 |
+| 4 | What is a Bedrock Knowledge Base used for? | factual | 0.00 | 0.00 | 0.83 | 1.00 | 0.60 |
+| 5 | What does chunking do in a knowledge base pipeline… | factual | 0.25 | 1.00 | 0.88 | 0.94 | 0.66 |
+| 6 | What is the purpose of RetrieveAndGenerate? | factual | 0.42 | 1.00 | 1.00 | 0.68 | 0.58 |
 | 7 | What is enabled by default with the correct AWS Ma… | multi_hop | 0.00 | 0.50 | 1.00 | 0.47 | 0.77 |
-| 8 | In fixed-size chunking, what two settings define c… | multi_hop | 0.50 | 1.00 | 1.00 | 0.91 | 0.84 |
-| 9 | In Amazon Bedrock, which feature searches your dat… | multi_hop | 1.00 | 0.50 | 1.00 | 0.78 | 0.35 |
-| 10 | For Amazon Bedrock inference, which endpoint is us… | multi_hop | 1.00 | 0.50 | 1.00 | 0.79 | 0.60 |
-| 11 | Can Bedrock KB do RAG-style retrieval before gener… | paraphrase | 0.75 | 0.00 | 1.00 | 0.64 | 0.69 |
-| 12 | How do I check token count before sending a prompt… | paraphrase | 1.00 | 1.00 | 1.00 | 0.65 | 0.65 |
-| 13 | Is there an API for streaming model responses? | paraphrase | 1.00 | 1.00 | 1.00 | 0.77 | 0.65 |
-| 14 | Can I directly apply a guardrail through an API ca… | paraphrase | 1.00 | 1.00 | 1.00 | 0.66 | 0.61 |
-| 15 | Name at least 5 runtime invocation metrics Bedrock… | paraphrase | 0.00 | 0.56 | 1.00 | 0.44 | 0.30 |
-| 16 | In Amazon Bedrock inference, which service tier is… | factual | 0.50 | 1.00 | 1.00 | 0.94 | 0.69 |
-| 17 | What is the default PostgreSQL version used intern… | no_answer | 0.00 | 0.00 | 0.00 | 0.00 | 1.00 |
+| 8 | In fixed-size chunking, what two settings define c… | multi_hop | 0.00 | 1.00 | 1.00 | 0.95 | 0.77 |
+| 9 | In Amazon Bedrock, which feature searches your dat… | multi_hop | 1.00 | 1.00 | 1.00 | 0.91 | 0.75 |
+| 10 | For Amazon Bedrock inference, which endpoint is us… | multi_hop | 1.00 | 0.50 | 1.00 | 0.86 | 0.61 |
+| 11 | Can Bedrock KB do RAG-style retrieval before gener… | paraphrase | 0.58 | 0.00 | 1.00 | 0.63 | 0.61 |
+| 12 | How do I check token count before sending a prompt… | paraphrase | 1.00 | 1.00 | 1.00 | 0.58 | 0.57 |
+| 13 | Is there an API for streaming model responses? | paraphrase | 1.00 | 1.00 | 1.00 | 0.77 | 0.70 |
+| 14 | Can I directly apply a guardrail through an API ca… | paraphrase | 1.00 | 1.00 | 1.00 | 0.66 | 0.72 |
+| 15 | Name at least 5 runtime invocation metrics Bedrock… | paraphrase | 0.00 | 0.56 | 1.00 | 0.38 | 0.30 |
+| 16 | In Amazon Bedrock inference, which service tier is… | factual | 1.00 | 1.00 | 1.00 | 0.75 | 0.71 |
+| 17 | What is the default PostgreSQL version used intern… | no_answer | 0.00 | 0.00 | 1.00 | 0.00 | 1.00 |
 | 18 | Which color theme does the AWS Bedrock console use… | no_answer | 0.00 | 0.00 | 0.00 | 0.00 | 1.00 |
-| 19 | What salary does an AWS Bedrock product manager ea… | no_answer | 0.00 | 1.00 | 1.00 | 0.00 | 1.00 |
-| 20 | What was the weather in Seattle when Bedrock launc… | no_answer | 0.00 | 0.00 | 0.00 | 0.00 | 1.00 |
+| 19 | What salary does an AWS Bedrock product manager ea… | no_answer | 0.00 | 0.00 | 1.00 | 0.00 | 1.00 |
+| 20 | What was the weather in Seattle when Bedrock launc… | no_answer | 0.00 | 1.00 | 0.00 | 0.00 | 1.00 |
 
 ## Failure Analysis
 
 ### Failure Case 1
+
+**Question:** What is Amazon Bedrock?
+
+**Category:** factual
+
+**Ground Truth:** Amazon Bedrock is a fully managed service that makes foundation models from leading AI companies available through a unified API.
+
+**Predicted:** Amazon Bedrock is a service that provides access to supported foundation models from various providers for building generative AI applications [Chunk 1]. It also offers features like Knowledge Bases, which enable Retrieval Augmented Generation (RAG) to augment model responses with information from data stores [Chunk 2].
+
+**Average Score:** 0.4369
+
+**Analysis:**
+
+- Low context precision — retrieved chunks were not relevant to this question.
+- Low context recall — the retrieval missed key chunks needed to answer.
+- Low answer correctness — the predicted answer diverges significantly from ground truth.
+
+### Failure Case 2
 
 **Question:** Name at least 5 runtime invocation metrics Bedrock publishes (CloudWatch)
 
@@ -112,11 +130,11 @@ Metrics source: **judge**
 
 **Predicted:** 1. Invocations [Chunk 1]
 2. InvocationLatency [Chunk 1]
-3. InvocationClientErrors [Chunk 1, Chunk 3]
+3. InvocationClientErrors [Chunk 1, 3]
 4. InvocationServerErrors [Chunk 3]
 5. InvocationThrottles [Chunk 3]
 
-**Average Score:** 0.4597
+**Average Score:** 0.4462
 
 **Analysis:**
 
@@ -124,37 +142,21 @@ Metrics source: **judge**
 - Low answer relevancy — the generated answer does not address the question directly.
 - Low answer correctness — the predicted answer diverges significantly from ground truth.
 
-### Failure Case 2
+### Failure Case 3
 
-**Question:** What is enabled by default with the correct AWS Marketplace permissions, and which table shows model support by AWS Region?
+**Question:** What is a Bedrock Knowledge Base used for?
 
-**Category:** multi_hop
+**Category:** factual
 
-**Ground Truth:** Access to all Amazon Bedrock foundation models is enabled by default with the correct AWS Marketplace permissions. Model support by AWS Region is shown in the model support by AWS Region table.
+**Ground Truth:** A Bedrock Knowledge Base is used to give foundation models contextual information from your private data sources for Retrieval Augmented Generation (RAG).
 
-**Predicted:** Access to all Amazon Bedrock foundation models is enabled by default with the correct AWS Marketplace permissions [Chunk 1]. The table showing inference profile support by AWS Region is found in the "Supported Regions and models for inference profiles" section [Chunk 2].
+**Predicted:** A Bedrock Knowledge Base is used to connect to a data source and retrieve data or information when queried, enabling retrieval-augmented generation (RAG) workflows with large language models (LLMs) [Chunk 3, Chunk 4]. It allows you to define and identify a knowledge base, then query it to fetch relevant references, though guardrails are not applied to the retrieved data [Chunk 2, Chunk 3].
 
-**Average Score:** 0.5475
+**Average Score:** 0.4869
 
 **Analysis:**
 
 - Low context precision — retrieved chunks were not relevant to this question.
-- Low answer relevancy — the generated answer does not address the question directly.
-
-### Failure Case 3
-
-**Question:** Can Bedrock KB do RAG-style retrieval before generation?
-
-**Category:** paraphrase
-
-**Ground Truth:** Yes, Bedrock Knowledge Bases support RAG-style retrieval before generation through the RetrieveAndGenerate API, which first queries the knowledge base for relevant results and then uses them to augment the prompt for the foundation model.
-
-**Predicted:** Yes, Amazon Bedrock Knowledge Bases perform RAG-style retrieval by fetching relevant information from data sources before generating responses [Chunk 1][Chunk 4]. This retrieved information is then used to improve the accuracy and relevance of the generated output.
-
-**Average Score:** 0.6165
-
-**Analysis:**
-
 - Low context recall — the retrieval missed key chunks needed to answer.
 
 ### No-Answer Behavior Summary
@@ -164,8 +166,8 @@ Metrics source: **judge**
 
 ## Correctness Score Distribution
 
-- Distinct answer-correctness values (answerable rows): 0.30, 0.35, 0.59, 0.60, 0.61, 0.63, 0.64, 0.65, 0.68, 0.69, 0.70, 0.74, 0.77, 0.84
-- Min/Median/Max: 0.3000 / 0.6532 / 0.8417
+- Distinct answer-correctness values (answerable rows): 0.30, 0.46, 0.57, 0.58, 0.60, 0.61, 0.66, 0.70, 0.71, 0.72, 0.75, 0.77
+- Min/Median/Max: 0.3000 / 0.6583 / 0.7698
 
 ## Metric Interpretation Notes
 

@@ -30,69 +30,85 @@ To reflect a real-world scenario, I used a mixed corpus of PDF, TXT, and HTML do
 
 ## Architecture
 
-```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                          HOST  (evaluation layer)                          │
-│                                                                             │
-│   📊 scripts/run_eval.py ──► RAGAS + DeepEval                              │
-│       ctx_precision · ctx_recall · faithfulness · relevancy · correctness   │
-└───────────────────────────────────┬─────────────────────────────────────────┘
-                                    │  HTTP
-                                    ▼
-┌─── Docker Compose ────────────────────────────────────────────────────────┐
-│                                                                           │
-│   ┌───────────────────────────────────┐    ┌───────────────────────────┐  │
-│   │         rag-api  (FastAPI)        │    │   chroma  (Vector DB)     │  │
-│   │                                   │    │                           │  │
-│   │  📥 /ingest                       │    │   cosine similarity       │  │
-│   │     loader → chunker → embedder ──┼──► │   persistent volume       │  │
-│   │                                   │    │   chromadb/chroma:0.6.3   │  │
-│   │  🔍 /query                        │    └───────────────────────────┘  │
-│   │     embed → hybrid retrieve ──────┼──► vector + BM25 fusion           │
-│   │     rerank → generate → cite      │                                   │
-│   │                                   │    ┌───────────────────────────┐  │
-│   │  🤖 /agent/research               │    │   Mistral API (external)  │  │
-│   │     sub-questions → RAG loop ─────┼──► │   mistral-large-latest    │  │
-│   │     retry gaps → score evidence   │    │   mistral-small (fallback)│  │
-│   │     detect conflicts → synthesise │    └───────────────────────────┘  │
-│   │                                   │                                   │
-│   │  🌐 /ui   (single-page web UI)   │                                   │
-│   └───────────────────────────────────┘                                   │
-│                                                                           │
-└───────────────────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TB
+    subgraph HOST["🖥️ HOST — Evaluation Layer"]
+        EVAL["📊 scripts/run_eval.py"]
+        EVAL -->|"RAGAS + DeepEval"| METRICS["ctx_precision · ctx_recall · faithfulness · relevancy · correctness"]
+    end
+
+    HOST -->|"HTTP"| DOCKER
+
+    subgraph DOCKER["🐳 Docker Compose"]
+        subgraph API["rag-api (FastAPI)"]
+            INGEST["📥 /ingest — loader → chunker → embedder"]
+            QUERY["🔍 /query — embed → hybrid → rerank → generate"]
+            AGENT["🤖 /agent/research — sub-Qs → RAG loop → retry → synthesise"]
+            STREAM["📡 /query/stream — SSE token streaming"]
+            UI["🌐 /ui — web interface"]
+        end
+
+        subgraph CHROMA["ChromaDB 0.6.3"]
+            VEC[("Cosine HNSW, persistent volume")]
+        end
+
+        subgraph MISTRAL["Mistral API (external)"]
+            LLM["mistral-large-latest, mistral-small (fallback)"]
+        end
+
+        INGEST -->|"upsert embeddings"| VEC
+        QUERY -->|"vector + BM25"| VEC
+        QUERY -->|"generate + cite"| LLM
+        AGENT -->|"internal /query"| QUERY
+        AGENT -->|"synthesise"| LLM
+    end
+
+    style HOST fill:#1a1a2e,stroke:#e94560,color:#fff
+    style DOCKER fill:#16213e,stroke:#0f3460,color:#fff
+    style API fill:#0f3460,stroke:#533483,color:#fff
+    style CHROMA fill:#1a472a,stroke:#2d6a4f,color:#fff
+    style MISTRAL fill:#4a1942,stroke:#6b2d5b,color:#fff
 ```
 
 ### Data Flow
 
-```
- User query
-   │
-   ▼
- ┌──────────┐    ┌───────────┐    ┌──────────┐    ┌───────────┐    ┌──────────┐
- │ Embed    │──►│ Retrieve   │──►│ Rerank   │──►│ Generate   │──►│ Response  │
- │ question │   │ vector+BM25│   │ cross-enc│   │ LLM+cite   │   │ + chunks  │
- └──────────┘   └───────────┘   └──────────┘   └───────────┘   └──────────┘
-                     │                                │
-                     ▼                                ▼
-               ChromaDB store                   Mistral API
+```mermaid
+flowchart LR
+    Q["❓ User Query"] --> EMB["1️⃣ Embed (all-MiniLM-L6-v2)"]
+    EMB --> RET["2️⃣ Retrieve (60% vector + 40% BM25)"]
+    RET --> RR["3️⃣ Rerank (cross-encoder, top-20 → top-4)"]
+    RR --> GEN["4️⃣ Generate (Mistral LLM + citations)"]
+    GEN --> GATE{"5️⃣ Confidence Gate"}
+    GATE -->|"confident"| ANS["✅ Answer + citations"]
+    GATE -->|"low confidence"| NULL["🚫 null (no hallucination)"]
+
+    RET <-->|"cosine HNSW"| DB[("ChromaDB")]
+    GEN <-->|"API call"| LLM["Mistral API"]
+
+    style Q fill:#e94560,stroke:#333,color:#fff
+    style ANS fill:#2d6a4f,stroke:#333,color:#fff
+    style NULL fill:#c23616,stroke:#333,color:#fff
+    style DB fill:#1a472a,stroke:#333,color:#fff
+    style LLM fill:#4a1942,stroke:#333,color:#fff
 ```
 
 ### Agent Research Pipeline
 
-```
- Topic
-   │
-   ▼
- ┌────────────┐    ┌─────────┐    ┌───────────┐    ┌──────────┐    ┌──────────┐
- │ Generate   │──►│ Query   │──►│ Retry     │──►│ Score    │──►│ Detect    │
- │ sub-Qs     │   │ RAG ×N  │   │ gaps ×1   │   │ evidence │   │ conflicts │
- └────────────┘   └─────────┘   └───────────┘   └──────────┘   └──────────┘
-                                                                      │
-                                                                      ▼
-                                                               ┌──────────┐
-                                                               │Synthesise│
-                                                               │ summary  │
-                                                               └──────────┘
+```mermaid
+flowchart LR
+    T["📋 Topic"] --> SQ["1️⃣ Generate Sub-questions (3-5 templates)"]
+    SQ --> RAG["2️⃣ Query RAG × N questions"]
+    RAG --> CLS["3️⃣ Classify (answered / gap)"]
+    CLS --> RETRY["4️⃣ Retry Gaps (reformulate × 1)"]
+    RETRY --> SCORE["5️⃣ Score confidence per finding"]
+    SCORE --> CONFLICT["6️⃣ Detect Contradictions (10 opposition pairs)"]
+    CONFLICT --> SYNTH["7️⃣ Synthesise (LLM summary + fallback)"]
+    SYNTH --> REPORT["📊 Structured Research Report"]
+
+    style T fill:#e94560,stroke:#333,color:#fff
+    style REPORT fill:#2d6a4f,stroke:#333,color:#fff
+    style RETRY fill:#e67e22,stroke:#333,color:#fff
+    style CONFLICT fill:#c23616,stroke:#333,color:#fff
 ```
 
 ---
